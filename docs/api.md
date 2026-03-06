@@ -1,7 +1,7 @@
 # API 仕様書
 
 > **最終更新日**: 2026-03-06
-> **ステータス**: Draft v1
+> **ステータス**: Draft v2
 > **Base URL**: `https://{api-id}.execute-api.ap-northeast-1.amazonaws.com/{stage}`
 
 ---
@@ -48,10 +48,35 @@ POST /sessions
     "sessionId": "01JXXXXXXXXXXXXXXXXXXXX",
     "roomId": "room-abc123",
     "status": "waiting",
+    "uploadUrls": [
+      {
+        "photoIndex": 1,
+        "uploadUrl": "https://receipt-purikura-dev.s3-accelerate.amazonaws.com/...",
+        "key": "originals/01JX.../photo-1.jpg"
+      },
+      {
+        "photoIndex": 2,
+        "uploadUrl": "https://receipt-purikura-dev.s3-accelerate.amazonaws.com/...",
+        "key": "originals/01JX.../photo-2.jpg"
+      },
+      {
+        "photoIndex": 3,
+        "uploadUrl": "https://receipt-purikura-dev.s3-accelerate.amazonaws.com/...",
+        "key": "originals/01JX.../photo-3.jpg"
+      },
+      {
+        "photoIndex": 4,
+        "uploadUrl": "https://receipt-purikura-dev.s3-accelerate.amazonaws.com/...",
+        "key": "originals/01JX.../photo-4.jpg"
+      }
+    ],
     "createdAt": 1741262400
   }
 }
 ```
+
+> セッション作成時に Presigned URL を同時に発行して返す（B-01 + B-02）。
+> S3 Transfer Acceleration 対応。有効期限 5 分。
 
 ---
 
@@ -71,8 +96,18 @@ GET /sessions/{sessionId}
     "roomId": "room-abc123",
     "status": "processing",
     "images": {
-      "originals": ["originals/01JX.../photo-1.jpg", "..."],
-      "filtered": ["filtered/01JX.../photo-1.jpg", "..."],
+      "originals": [
+        "originals/01JX.../photo-1.jpg",
+        "originals/01JX.../photo-2.jpg",
+        "originals/01JX.../photo-3.jpg",
+        "originals/01JX.../photo-4.jpg"
+      ],
+      "filtered": [
+        "filtered/01JX.../photo-1.jpg",
+        "filtered/01JX.../photo-2.jpg",
+        "filtered/01JX.../photo-3.jpg",
+        "filtered/01JX.../photo-4.jpg"
+      ],
       "collage": "collages/01JX.../collage.jpg"
     },
     "captions": {
@@ -89,6 +124,9 @@ GET /sessions/{sessionId}
 }
 ```
 
+> `status` の遷移: `waiting` → `capturing` → `processing` → `printing` → `done`
+> `images`, `captions`, `yajiComments` は処理完了後に値が入る。
+
 **エラーレスポンス** `404`
 
 ```json
@@ -100,35 +138,38 @@ GET /sessions/{sessionId}
 
 ---
 
-### 1.4 アップロード URL 発行
+### 1.4 パイプライン開始
 
 ```
-POST /sessions/{sessionId}/upload-url
+POST /sessions/{sessionId}/process
 ```
 
 **リクエストボディ**
 
 ```json
 {
-  "fileName": "photo-1.jpg",
-  "contentType": "image/jpeg"
+  "filter": "mono"
 }
 ```
 
-**レスポンス** `200`
+> `filter`: `"mono"` (モノクロ) / `"sepia"` (セピア) / `"beauty"` (美肌) / `"pop-art"` (ポップアート) / `"anime"` (アニメ風)
+> `"pop-art"`, `"anime"` は AI スタイル変換 (Stability AI) を使用。
+
+**レスポンス** `202`
 
 ```json
 {
   "success": true,
   "data": {
-    "uploadUrl": "https://receipt-purikura-dev.s3-accelerate.amazonaws.com/...",
-    "key": "originals/01JX.../photo-1.jpg",
-    "expiresIn": 300
+    "executionArn": "arn:aws:states:ap-northeast-1:...:execution:...",
+    "status": "processing"
   }
 }
 ```
 
-> S3 Transfer Acceleration 対応の Presigned URL を返す。有効期限 5 分。
+> 4枚アップロード完了後にフロントから呼び出す。
+> Step Functions Express ワークフローを起動し、非同期で処理を開始する。
+> 進捗は WebSocket の `progress` イベントで通知。
 
 ---
 
@@ -151,6 +192,7 @@ GET /sessions/{sessionId}/download-url
 ```
 
 > CloudFront 経由の署名付き URL。有効期限 1 時間。
+> `status` が `done` でない場合は `400` エラー。
 
 ---
 
@@ -161,9 +203,10 @@ GET /sessions/{sessionId}/download-url
 ### 2.1 接続
 
 ```
-# クエリパラメータでセッション指定
 wss://...?sessionId=01JXXXXXXXXXXXXXXXXXXXX
 ```
+
+> クエリパラメータで `sessionId` を指定して接続。
 
 ### 2.2 クライアント → サーバー
 
@@ -212,7 +255,15 @@ wss://...?sessionId=01JXXXXXXXXXXXXXXXXXXXX
 }
 ```
 
-`step`: `"face-detection"` → `"filter-apply"` → `"collage-generate"` → `"caption-generate"` → `"print-prepare"` → `"done"`
+`step` の遷移順序:
+1. `"upload-complete"` — アップロード完了
+2. `"face-detection"` — 顔検出中
+3. `"filter-apply"` — フィルター適用中
+4. `"collage-generate"` — コラージュ生成中
+5. `"caption-generate"` — キャプション生成中
+6. `"print-prepare"` — 印刷準備中
+7. `"printing"` — 印刷中
+8. `"done"` — 完了
 
 #### yajiComment (やじコメント配信)
 
@@ -227,6 +278,9 @@ wss://...?sessionId=01JXXXXXXXXXXXXXXXXXXXX
   }
 }
 ```
+
+> `lane`: `"fast"` (Rekognition テンプレート、即座) / `"deep"` (Bedrock Haiku、数秒後)
+> `emotion`: `"happy"` / `"surprised"` / `"calm"` / `"sad"` / `"angry"` / `"confused"`
 
 #### signal (WebRTC シグナリング転送)
 
