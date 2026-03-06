@@ -12,7 +12,10 @@
     "format:check": "prettier --check 'src/**/*.ts'",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "cdk:synth": "cd cdk && npx cdk synth",
+    "cdk:diff": "cd cdk && npx cdk diff",
+    "cdk:deploy": "cd cdk && npx cdk deploy --all --require-approval never"
   },
   "repository": {
     "type": "git",
