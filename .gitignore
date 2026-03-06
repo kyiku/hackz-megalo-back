@@ -8,3 +8,8 @@ dist/
 coverage/
 *.tsbuildinfo
 .DS_Store
+
+# CDK
+cdk/dist/
+cdk/cdk.out/
+cdk/cdk.context.json

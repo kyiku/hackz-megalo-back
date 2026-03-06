@@ -1,4 +1,4 @@
-name: CI
+name: CI/CD
 
 on:
   push:
@@ -9,6 +9,10 @@ on:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+permissions:
+  id-token: write
+  contents: read
 
 jobs:
   lint:
@@ -58,3 +62,40 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+
+  deploy:
+    name: Deploy
+    needs: [lint, type-check, test, build]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install CDK dependencies
+        run: npm ci
+        working-directory: cdk
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ap-northeast-1
+
+      - name: CDK diff
+        run: npx cdk diff --app 'npx ts-node bin/app.ts'
+        working-directory: cdk
+
+      - name: CDK deploy
+        run: npx cdk deploy --all --require-approval never --app 'npx ts-node bin/app.ts'
+        working-directory: cdk
