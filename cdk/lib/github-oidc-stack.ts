@@ -26,7 +26,7 @@ export class GithubOidcStack extends cdk.Stack {
           },
           StringLike: {
             'token.actions.githubusercontent.com:sub':
-              'repo:kyiku/hackz-megalo-back:ref:refs/heads/main',
+              'repo:kyiku/hackz-megalo-back:environment:production',
           },
         },
       ),
