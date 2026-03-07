@@ -1,14 +1,15 @@
 # Step Functions ワークフロー設計
 
 > **最終更新日**: 2026-03-06
-> **ステータス**: Draft v1
+> **ステータス**: Draft v3
+> **元定義**: [元要件定義書 セクション9](/docs/requirements.md#9-画像処理パイプライン詳細step-functions)
 
 ---
 
 ## 1. 概要
 
 Step Functions Express Workflow で画像処理パイプラインを制御する。
-`POST /sessions/{id}/process` 呼び出しで起動し、完了まで非同期で処理する。
+`POST /api/session/:sessionId/process` 呼び出しで起動し、完了まで非同期で処理する。
 
 **ワークフロータイプ**: Express (同期不要、コスト最適化)
 **最大実行時間**: 5 分
@@ -16,86 +17,121 @@ Step Functions Express Workflow で画像処理パイプラインを制御する
 
 ---
 
-## 2. ワークフロー定義
+## 2. ワークフロー定義（4フェーズ超並列化）
+
+元要件定義書 セクション 9.1 に準拠。
 
 ```
-                    ┌─ Input ─┐
-                    │ sessionId │
-                    │ filter    │
-                    └────┬──────┘
-                         │
-                    ┌────▼────┐
-                    │ Update   │  status → "processing"
-                    │ Session  │  DynamoDB 更新
-                    └────┬────┘
-                         │
-              ┌──────────┼──────────────┐
-              │          │              │
-        ┌─────▼────┐ ┌──▼───────┐ ┌───▼──────────┐
-        │ face-    │ │ filter-  │ │ yaji-comment │
-        │ detection│ │ apply    │ │ -fast        │
-        │          │ │ (4枚並列) │ │              │
-        └─────┬────┘ └──┬───────┘ └───┬──────────┘
-              │          │              │
-              │          │         ┌───▼──────────┐
-              │          │         │ yaji-comment │
-              │          │         │ -deep        │
-              │          │         └───┬──────────┘
-              │          │              │
-              └──────────┼──────────────┘
-                         │
-                    ┌────▼──────────┐
-                    │ collage-      │
-                    │ generate      │  顔位置情報 + フィルター済み画像
-                    └────┬──────────┘
-                         │
-                    ┌────▼──────────┐
-                    │ caption-      │
-                    │ generate      │  コラージュ → キャプション + 感情分析
-                    └────┬──────────┘
-                         │
-                    ┌────▼──────────┐
-                    │ print-        │
-                    │ prepare       │  ディザリング + QR + ESC/POS
-                    └────┬──────────┘
-                         │
-                    ┌────▼──────────┐
-                    │ print-send    │  IoT Core MQTT パブリッシュ
-                    │               │  status → "printing"
-                    └────┬──────────┘
-                         │
-                    ┌────▼──────────┐
-                    │ finalize      │  status → "done"
-                    │               │  WebSocket 完了通知
-                    └───────────────┘
+        [POST /api/session/:sessionId/process → Step Functions Express 起動]
+                           │
+                    ┌──────▼──────┐
+                    │   Input      │
+                    │ sessionId    │
+                    │ filterType   │
+                    │ filter       │
+                    │ images (4枚) │
+                    └──────┬──────┘
+                           │
+                    ┌──────▼──────┐
+                    │ Update       │  status → "processing"
+                    │ Session      │  WebSocket statusUpdate 送信
+                    └──────┬──────┘
+                           │
+╔══════════════════════════╪══════════════════════════╗
+║  Phase 1: 並列処理（顔検出 + フィルター同時開始）    ║
+║                          │                          ║
+║  ┌──────────────────┐  ┌─▼────────────────────┐    ║
+║  │ face-detection    │  │ filter-apply          │    ║
+║  │ Rekognition ×4   │  │ [簡易] sharp ~1秒     │    ║
+║  │ ~1-2秒           │  │ [AI] Stability ~15秒  │    ║
+║  └────────┬─────────┘  └──────────┬───────────┘    ║
+║           └──→ クロップ調整 ──────┘                  ║
+╚══════════════════════════╪══════════════════════════╝
+                           │
+╔══════════════════════════╪══════════════════════════╗
+║  Phase 2: 並列処理（コラージュ + キャプション）      ║
+║                          │                          ║
+║  ┌──────────────────┐  ┌─▼────────────────────┐    ║
+║  │ collage-generate  │  │ caption-generate      │    ║
+║  │ sharp 2x2グリッド │  │ Bedrock Claude        │    ║
+║  │ ~1-2秒            │  │ + Comprehend 感情分析  │    ║
+║  └────────┬──────────┘  └──────────┬───────────┘    ║
+╚═══════════╪════════════════════════╪════════════════╝
+            │                        │
+╔═══════════╪════════════════════════╪════════════════╗
+║  Phase 3: 並列処理（ディザリング + 感情分析）        ║
+║           │                        │                ║
+║  ┌────────▼──────────┐  ┌─────────▼───────────┐    ║
+║  │ print-prepare      │  │ 感情連動フレーム選択  │    ║
+║  │ ディザリング        │  │ sentimentScore →     │    ║
+║  │ + QRコード埋め込み  │  │ フレームデザイン決定  │    ║
+║  │ + レシートレイアウト │  │ ~0.5秒              │    ║
+║  │ ~1-2秒             │  │                      │    ║
+║  └────────┬───────────┘  └──────────┬───────────┘   ║
+║           └──→ 感情連動フレーム最終合成 ←┘            ║
+╚══════════════════════════╪══════════════════════════╝
+                           │
+╔══════════════════════════╪══════════════════════════╗
+║  Phase 4: 並列出力（全て同時実行）                   ║
+║                          │                          ║
+║  ├──→ S3 保存（カラー版 + 印刷用）                  ║
+║  ├──→ DynamoDB 書き込み（→ Streams → AppSync）      ║
+║  ├──→ WebSocket で completed 通知                   ║
+║  ├──→ EventBridge → SNS（ファンアウト）             ║
+║  └──→ IoT Core MQTT で印刷ジョブ即時送信            ║
+╚═════════════════════════════════════════════════════╝
+
+─── 所要時間（撮影時間除く）───
+簡易フィルター: アップ(1-2秒) + Phase1(2秒) + Phase2(2秒) + Phase3(2秒) + 印刷(5秒) = ~12秒
+AIスタイル:     アップ(1-2秒) + Phase1(15秒) + Phase2(3秒) + Phase3(2秒) + 印刷(5秒) = ~27秒
 ```
+
+> **やじコメント** (`yaji-comment-fast`, `yaji-comment-deep`) は撮影中にリアルタイム配信するため、
+> Step Functions パイプライン **外** で実行する。WebSocket 経由で撮影画像を受け取り次第、
+> 独立した Lambda として即時実行される。
 
 ---
 
-## 3. 並列実行の詳細
+## 3. フェーズ詳細
 
-### 3.1 第1段階（Parallel）
+### 3.1 Phase 1: 顔検出 + フィルター（Parallel）
 
-以下の 3 グループを **同時並列** 実行:
+以下の 2 グループを **同時並列** 実行:
 
 | グループ | Lambda | 入力 | 出力 |
 |---------|--------|------|------|
 | A: 顔検出 | `face-detection` | 4枚の S3 キー | 顔位置座標 + 感情ラベル (配列) |
-| B: フィルター | `filter-apply` | 4枚の S3 キー + filter 種別 | フィルター済み 4枚の S3 キー |
-| C: やじコメント (fast) | `yaji-comment-fast` | 4枚の S3 キー | コメント配列 (WebSocket で即時配信) |
+| B: フィルター | `filter-apply` | 4枚の S3 キー + filterType + filter | フィルター済み 4枚の S3 キー |
 
-### 3.2 第1段階完了後（Sequential）
+両方の結果を結合し、Phase 2 に渡す。
 
-| 順序 | Lambda | 依存 | 入力 | 出力 |
-|------|--------|------|------|------|
-| 1 | `yaji-comment-deep` | C 完了後 | 4枚の S3 キー | コメント配列 (WebSocket 配信) |
-| 2 | `collage-generate` | A + B 完了後 | 顔位置 + フィルター済み画像 | コラージュ S3 キー |
-| 3 | `caption-generate` | 2 完了後 | コラージュ S3 キー | キャプション + 感情スコア |
-| 4 | `print-prepare` | 3 完了後 | コラージュ + キャプション | 印刷用バイナリ S3 キー |
-| 5 | print-send (inline) | 4 完了後 | 印刷用 S3 キー | IoT Core MQTT 送信 |
+### 3.2 Phase 2: コラージュ + キャプション（Parallel）
 
-> **注意**: `yaji-comment-deep` は fast と並列ではなく、fast 完了後に実行。
-> fast がテンプレートベースの即座応答、deep が AI による高品質応答を担う時間差演出。
+| グループ | Lambda | 依存 | 入力 | 出力 |
+|---------|--------|------|------|------|
+| A: コラージュ | `collage-generate` | Phase 1 完了 | 顔位置 + フィルター済み画像 | コラージュ S3 キー |
+| B: キャプション | `caption-generate` | Phase 1 完了 | フィルター済み画像 (4枚) | キャプション + 感情スコア |
+
+### 3.3 Phase 3: ディザリング + 感情連動フレーム（Parallel → 合成）
+
+| グループ | Lambda | 依存 | 入力 | 出力 |
+|---------|--------|------|------|------|
+| A: 印刷準備 | `print-prepare` | Phase 2 コラージュ完了 | コラージュ + キャプション | 印刷用画像 + QR + ESC/POS |
+| B: 感情フレーム | (inline) | Phase 2 キャプション完了 | 感情スコア | フレームデザイン ID |
+
+A + B の結果を合成して最終印刷画像を生成。
+
+### 3.4 Phase 4: 並列出力
+
+Phase 3 完了後、以下を **全て同時** 実行:
+
+| 出力先 | 内容 | 実装 |
+|--------|------|------|
+| S3 | カラー版 (`collages/`) + 印刷用 (`print-ready/`) + DL 用 (`downloads/`) | S3 PutObject |
+| DynamoDB | セッション更新 (status → `completed`, 画像 URL 等) | DynamoDB UpdateItem |
+| WebSocket | `completed` イベント送信 | API Gateway Management API |
+| EventBridge | 完了イベント → SNS ファンアウト | EventBridge PutEvents |
+| IoT Core | MQTT 印刷ジョブ送信 (`receipt-purikura/print/{sessionId}`) | IoT Data Plane Publish |
 
 ---
 
@@ -105,13 +141,14 @@ Step Functions Express Workflow で画像処理パイプラインを制御する
 
 ```json
 {
-  "sessionId": "01JXXXXXXXXXXXXXXXXXXXX",
+  "sessionId": "uuid-xxxx",
+  "filterType": "simple",
   "filter": "mono",
   "images": [
-    "originals/01JX.../photo-1.jpg",
-    "originals/01JX.../photo-2.jpg",
-    "originals/01JX.../photo-3.jpg",
-    "originals/01JX.../photo-4.jpg"
+    "originals/uuid-xxxx/1.jpg",
+    "originals/uuid-xxxx/2.jpg",
+    "originals/uuid-xxxx/3.jpg",
+    "originals/uuid-xxxx/4.jpg"
   ],
   "bucket": "receipt-purikura-dev"
 }
@@ -136,65 +173,36 @@ Step Functions Express Workflow で画像処理パイプラインを制御する
 ### 4.3 filter-apply
 
 ```json
-// 入力: ワークフロー入力 + filter 種別
+// 入力: ワークフロー入力 + filterType + filter
 // 出力:
 {
   "filteredImages": [
-    "filtered/01JX.../photo-1.jpg",
-    "filtered/01JX.../photo-2.jpg",
-    "filtered/01JX.../photo-3.jpg",
-    "filtered/01JX.../photo-4.jpg"
+    "filtered/uuid-xxxx/1.png",
+    "filtered/uuid-xxxx/2.png",
+    "filtered/uuid-xxxx/3.png",
+    "filtered/uuid-xxxx/4.png"
   ]
 }
 ```
 
 > 4枚を Lambda 内で並列処理 (Promise.all)。
 
-### 4.4 yaji-comment-fast
-
-```json
-// 入力: ワークフロー入力
-// 出力:
-{
-  "comments": [
-    { "text": "いい笑顔ｗｗｗ", "emotion": "happy" },
-    { "text": "キメ顔すぎるｗ", "emotion": "surprised" }
-  ]
-}
-```
-
-> 出力と同時に WebSocket で `yajiComment` (lane: "fast") を配信。
-
-### 4.5 yaji-comment-deep
-
-```json
-// 入力: ワークフロー入力
-// 出力:
-{
-  "comments": [
-    { "text": "左の人の表情が語りかけてくる...", "emotion": "happy" }
-  ]
-}
-```
-
-> 出力と同時に WebSocket で `yajiComment` (lane: "deep") を配信。
-
-### 4.6 collage-generate
+### 4.4 collage-generate
 
 ```json
 // 入力: faces + filteredImages
 // 出力:
 {
-  "collageKey": "collages/01JX.../collage.jpg"
+  "collageKey": "collages/uuid-xxxx.png"
 }
 ```
 
-> 顔位置を使って最適なクロップ → 2x2 グリッド (576x576px) 配置。
+> 顔位置を使って最適なクロップ → 2x2 グリッド (576x576px, padding: 10px, gap: 6px) 配置。
 
-### 4.7 caption-generate
+### 4.5 caption-generate
 
 ```json
-// 入力: collageKey
+// 入力: filteredImages (4枚)
 // 出力:
 {
   "caption": "楽しい思い出の一枚！",
@@ -203,50 +211,105 @@ Step Functions Express Workflow で画像処理パイプラインを制御する
 }
 ```
 
-### 4.8 print-prepare
+> Bedrock Claude でキャプション生成 + Comprehend で感情分析。
+
+### 4.6 print-prepare
 
 ```json
-// 入力: collageKey + caption
+// 入力: collageKey + caption + sentimentScore
 // 出力:
 {
-  "printReadyKey": "print-ready/01JX.../receipt.bin",
-  "downloadKey": "downloads/01JX.../collage.jpg"
+  "printReadyKey": "print-ready/uuid-xxxx.png",
+  "downloadKey": "downloads/uuid-xxxx.png"
 }
 ```
 
 > 処理内容:
 > 1. コラージュにキャプションテキストを合成
-> 2. カラー版 DL 用画像を downloads/ に保存
-> 3. Floyd-Steinberg ディザリングで白黒2値変換
-> 4. QR コード (DL URL) を埋め込み
-> 5. ESC/POS ラスターコマンドに変換 → print-ready/ に保存
+> 2. 感情スコアに連動したフレームをオーバーレイ
+> 3. カラー版 DL 用画像を `downloads/` に保存
+> 4. Floyd-Steinberg ディザリングで白黒2値変換
+> 5. QR コード (DL URL) を埋め込み
+> 6. ESC/POS ラスターコマンドに変換 → `print-ready/` に保存
 
 ---
 
-## 5. WebSocket 進捗通知
+## 5. やじコメント（パイプライン外）
 
-各ステップの **開始時** と **完了時** に WebSocket で `progress` イベントを送信する。
+やじコメントは撮影フェーズ中にリアルタイム配信するため、Step Functions パイプラインとは **独立** して動作する。
+
+### 5.1 yaji-comment-fast (Rekognition)
+
+```json
+// 入力: S3 画像キー + connectionId
+// 出力: WebSocket で即時配信
+{
+  "type": "yajiComment",
+  "data": {
+    "text": "いい笑顔ｗｗｗ",
+    "emotion": "happy",
+    "lane": "fast",
+    "timestamp": 1741262400
+  }
+}
+```
+
+> 2秒間隔で Rekognition 感情検出 → テンプレートマッチング → WebSocket 配信。
+
+### 5.2 yaji-comment-deep (Bedrock Haiku)
+
+```json
+// 入力: S3 画像キー + connectionId
+// 出力: WebSocket で即時配信
+{
+  "type": "yajiComment",
+  "data": {
+    "text": "左の人の表情が語りかけてくる...",
+    "emotion": "happy",
+    "lane": "deep",
+    "timestamp": 1741262405
+  }
+}
+```
+
+> 5秒間隔で Bedrock Haiku マルチモーダル分析 → 高品質コメント → WebSocket 配信。
+
+---
+
+## 6. WebSocket 進捗通知
+
+各ステップの **開始時** に WebSocket で `statusUpdate` イベントを送信する。
 
 | step | タイミング | progress | message |
 |------|-----------|----------|---------|
-| `face-detection` | 開始 | 10 | 顔を検出中... |
-| `filter-apply` | 開始 | 20 | フィルター適用中... |
-| `filter-apply` | 完了 | 40 | フィルター完了 |
-| `collage-generate` | 開始 | 50 | コラージュ生成中... |
-| `collage-generate` | 完了 | 60 | コラージュ完了 |
-| `caption-generate` | 開始 | 65 | キャプション生成中... |
-| `print-prepare` | 開始 | 75 | 印刷準備中... |
-| `printing` | 開始 | 90 | 印刷中... |
-| `done` | 完了 | 100 | 完了！ |
+| `upload` | アップロード完了 | 10 | アップロード完了 |
+| `face-detection` | Phase 1 開始 | 20 | 顔を検出中... |
+| `filter` | Phase 1 開始 | 30 | フィルター適用中... |
+| `collage` | Phase 2 開始 | 50 | コラージュ生成中... |
+| `caption` | Phase 2 開始 | 55 | キャプション生成中... |
+| `dither` | Phase 3 開始 | 70 | ディザリング・印刷準備中... |
+| `print` | Phase 4 開始 | 90 | 印刷中... |
 
-> 進捗通知は Lambda 内から `@aws-sdk/client-apigatewaymanagementapi` で直接 WebSocket に送信する。
-> `connectionId` は DynamoDB connections テーブルから `sessionId` で検索して取得。
+完了時は `completed` イベント:
+
+```json
+{
+  "type": "completed",
+  "data": {
+    "sessionId": "uuid-xxxx",
+    "collageImageUrl": "https://cdn.example.com/..."
+  }
+}
+```
+
+> 進捗通知は Lambda 内から `@aws-sdk/client-apigatewaymanagementapi` で WebSocket に送信。
+> `connectionId` は DynamoDB connections テーブルから `sessionId-index` GSI で検索。
 
 ---
 
-## 6. エラーハンドリング
+## 7. エラーハンドリング
 
-### 6.1 リトライポリシー
+### 7.1 リトライポリシー
 
 ```json
 {
@@ -261,18 +324,63 @@ Step Functions Express Workflow で画像処理パイプラインを制御する
 }
 ```
 
-### 6.2 Catch (フォールバック)
+### 7.2 Catch (フォールバック)
 
-- 個別ステップが失敗しても **パイプライン全体は停止しない**
 - 必須ステップ (`filter-apply`, `collage-generate`, `print-prepare`): 失敗時はワークフロー全体を失敗にする
-- オプショナルステップ (`face-detection`, `caption-generate`, `yaji-*`): 失敗時はスキップして続行
+- オプショナルステップ (`face-detection`, `caption-generate`): 失敗時はスキップして続行
 
 ```
 face-detection 失敗 → 顔位置なしでコラージュ生成（中央クロップ）
 caption-generate 失敗 → キャプションなしで印刷
-yaji-comment-* 失敗 → コメント配信なし（無視）
 ```
 
-### 6.3 失敗時の DynamoDB 更新
+### 7.3 失敗時の DynamoDB 更新
 
-ワークフロー全体が失敗した場合、`status` を `"error"` に更新し、エラー情報を保存する。
+ワークフロー全体が失敗した場合:
+1. `status` を `"failed"` に更新
+2. WebSocket で `error` イベントを送信
+
+```json
+{
+  "type": "error",
+  "data": {
+    "sessionId": "uuid-xxxx",
+    "message": "処理中にエラーが発生しました"
+  }
+}
+```
+
+---
+
+## 8. CDK 実装方針
+
+CDK の `Chain`, `Parallel`, `LambdaInvoke` で ASL を定義する。
+
+```typescript
+// Phase 1: Parallel
+const phase1 = new sfn.Parallel(this, 'Phase1-FaceAndFilter')
+  .branch(faceDetectionStep)
+  .branch(filterApplyStep)
+
+// Phase 2: Parallel
+const phase2 = new sfn.Parallel(this, 'Phase2-CollageAndCaption')
+  .branch(collageGenerateStep)
+  .branch(captionGenerateStep)
+
+// Phase 3: print-prepare (感情フレーム選択を内部で実行)
+const phase3 = printPrepareStep
+
+// Phase 4: Parallel outputs
+const phase4 = new sfn.Parallel(this, 'Phase4-Outputs')
+  .branch(s3SaveStep)
+  .branch(dynamoUpdateStep)
+  .branch(websocketNotifyStep)
+  .branch(iotPrintStep)
+
+// Chain all phases
+const workflow = updateSessionStep
+  .next(phase1)
+  .next(phase2)
+  .next(phase3)
+  .next(phase4)
+```
