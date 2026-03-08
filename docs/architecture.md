@@ -236,9 +236,12 @@ receipt-purikura-{stage}/
 
 ## 6. プロジェクト構成
 
+> **担当分担**: `cdk/` はフロント担当（インフラ担当兼任）、`src/` はバックエンド担当が管理。
+> 全 AWS リソースとアプリコードを本リポジトリで一元管理する。
+
 ```
 back/
-├── src/
+├── src/                       # Lambda コード (バックエンド担当)
 │   ├── functions/             # Lambda ハンドラ
 │   │   ├── session-create/
 │   │   ├── session-get/
@@ -267,9 +270,11 @@ back/
 │   └── utils/                 # ユーティリティ
 │       ├── response.ts        # API レスポンスビルダー
 │       └── validation.ts      # Zod スキーマ
-├── cdk/                       # CDK (IaC)
+├── cdk/                       # CDK IaC (フロント/インフラ担当)
 │   ├── bin/app.ts
 │   └── lib/
+│       ├── github-oidc-stack.ts  # OIDC + IAM Role
+│       └── app-stack.ts          # 全 AWS リソース
 ├── docs/                      # ドキュメント
 ├── tests/                     # テスト
 └── package.json

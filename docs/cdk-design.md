@@ -9,10 +9,10 @@
 
 ## 1. スタック構成
 
-バックエンドリポジトリの `cdk/lib/app-stack.ts` で全リソースを定義する。
+本リポジトリ (`hackz-megalo-back`) の `cdk/` で全 AWS リソースを一元管理する。
 
-> **注意**: OIDC + IAM Role は `hackz-megalo-infra` リポジトリで管理。
-> バックエンドは自身のアプリケーションリソースのみを定義する。
+> **担当分担**: CDK (インフラ) はフロント担当が管理。Lambda コード (`src/`) はバックエンド担当が管理。
+> `hackz-megalo-infra` リポジトリは廃止済み（アーカイブ）。OIDC スタックも本リポジトリに統合済み。
 
 ```
 HackzMegaloBackStack
