@@ -31,7 +31,7 @@
 | リアルタイム | WebSocket (進捗通知, WebRTCシグナリング, 撮影同期) |
 | 画像処理 | Step Functions Express + Lambda (フィルター, コラージュ, ディザリング) |
 | AI | Rekognition, Bedrock (Claude + Stability AI), Comprehend, Polly, Transcribe |
-| 印刷 | IoT Core MQTT → MacBook → プリンター (SQS フォールバック) |
+| 印刷 | IoT Core MQTT で印刷通知 → PC ブラウザが WebUSB で直接印刷 |
 | データ | DynamoDB (セッション), S3 (画像) |
 | イベント | EventBridge (S3 → Step Functions トリガー) |
 | 監視 | CloudWatch, X-Ray, AppSync ダッシュボード |
@@ -49,9 +49,9 @@
 | B-03 | EventBridge → Step Functions 起動 | S3 PutObject をトリガーに、または `POST /api/session/:id/process` で手動起動 |
 | B-04 | 簡易フィルター適用 | sharp で ナチュラル/美肌/明るさ補正/モノクロ/セピア（4枚並列） |
 | B-05 | コラージュ生成 | 4枚を 2x2 グリッドに配置 (576x576px、padding: 10px、gap: 6px) |
-| B-06 | ディザリング | Floyd-Steinberg でカラー→白黒2値変換 |
+| B-06 | ディザリング | Floyd-Steinberg でカラー→白黒2値変換、印刷用 PNG を生成 |
 | B-07 | QR コード埋め込み | カラー版 DL 用 QR をレシート画像に追加 |
-| B-08 | 印刷ジョブ送信 | IoT Core MQTT (`receipt-purikura/print/{sessionId}`) / SQS フォールバック |
+| B-08 | 印刷ジョブ通知 | IoT Core MQTT で印刷用画像の S3 キーを通知。ESC/POS 変換・USB 送信は PC ブラウザ側 (WebUSB) |
 | B-09 | セッション取得 API | `GET /api/session/:id` — 処理状態・結果を返す |
 
 ### 3.2 Should（あると審査で強い）
@@ -148,4 +148,5 @@
 | WebRTC 接続 | WebSocket `webrtc_offer` / `webrtc_answer` / `webrtc_ice` を中継 | WebSocket |
 | 撮影同期 | WebSocket `shooting_start` / `countdown` / `shutter` / `shooting_complete` | WebSocket |
 | コラージュ結果表示 | `GET /api/session/:id` → 画像 URL 返却 | REST |
+| 印刷 | MQTT 通知受信 → S3 から印刷用 PNG 取得 → WebUSB で ESC/POS 送信 | MQTT + HTTPS + WebUSB |
 | カラー版 DL | CloudFront 署名付き URL | HTTPS |
