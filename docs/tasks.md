@@ -191,15 +191,13 @@
   - Floyd-Steinberg ディザリングで白黒 2 値変換
     - sharp で grayscale → raw ピクセルデータ取得
     - Floyd-Steinberg アルゴリズムをカスタム実装
-  - ESC/POS ラスターコマンド生成
-    - GS v 0 コマンド (576px 幅)
-    - `xL=72, xH=0` (576/8=72)
-  - 印刷用画像を S3 に保存 (`print-ready/{sessionId}.png`)
+  - 印刷用 PNG を S3 に保存 (`print-ready/{sessionId}.png`)
+
+> **注意**: ESC/POS 変換は行わない。PC ブラウザが WebUSB API で PNG → ESC/POS 変換・USB 印刷を行う。
 
 **完了条件:**
 - [ ] Floyd-Steinberg ディザリングの単体テスト
-- [ ] ESC/POS バイナリ生成の単体テスト
-- [ ] 印刷用画像と DL 用画像が S3 に保存される
+- [ ] 印刷用 PNG と DL 用画像が S3 に保存される
 
 ---
 
@@ -210,7 +208,7 @@
 - Step Functions ワークフローの Phase 4 に印刷ジョブ送信ステップを追加
   - `@aws-sdk/client-iot-data-plane` で MQTT パブリッシュ
   - トピック: `receipt-purikura/print/{sessionId}`
-  - ペイロード: `{ sessionId, imageKey, format: "escpos-raster", width: 576, timestamp }`
+  - ペイロード: `{ sessionId, imageKey, format: "png", width: 576, timestamp }`
   - QoS: 1 (少なくとも1回配信)
 - DynamoDB status を `completed` に更新
 - WebSocket で `completed` イベント送信
@@ -411,9 +409,13 @@
 
 ## 備考
 
-### ESC/POS ラスターフォーマット
+### ESC/POS ラスターフォーマット（参考: フロント側実装）
 
-印刷用バイナリは ESC/POS の GS v 0 コマンドで生成する:
+> ESC/POS 変換はバックエンドではなく **PC ブラウザ側 (WebUSB API)** で行う。
+> バックエンドはディザリング済み PNG の生成までが責務。
+> 以下はフロント実装の参考情報。
+
+印刷用データは ESC/POS の GS v 0 コマンドで送信する:
 
 ```
 GS v 0 m xL xH yL yH d1...dk

@@ -340,7 +340,7 @@ wss://...
 
 ## 3. MQTT (IoT Core)
 
-### 3.1 印刷ジョブ送信
+### 3.1 印刷ジョブ通知
 
 **トピック**: `receipt-purikura/print/{sessionId}`
 
@@ -348,7 +348,7 @@ wss://...
 {
   "sessionId": "uuid-xxxx",
   "imageKey": "print-ready/uuid-xxxx.png",
-  "format": "escpos-raster",
+  "format": "png",
   "width": 576,
   "timestamp": 1741262400
 }
@@ -356,6 +356,7 @@ wss://...
 
 > QoS: 1 (少なくとも1回配信)
 > プロトコル: MQTT over WSS (ブラウザ対応)
+> PC ブラウザが MQTT で通知を受信 → `imageKey` の PNG を S3 から取得 → WebUSB API で ESC/POS 変換・USB 印刷
 
 ### 3.2 印刷完了通知
 
