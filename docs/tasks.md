@@ -48,14 +48,13 @@
   - `CreateSessionSchema`: `filterType` (`simple` / `ai`), `filter`, `photoCount`
   - `ProcessSchema`: `sessionId`
 - `package.json` に runtime 依存を追加
-  - `@aws-sdk/client-s3`, `@aws-sdk/s3-request-presigner`
-  - `@aws-sdk/client-dynamodb`, `@aws-sdk/lib-dynamodb`
+  - `@aws-sdk/*`
   - `zod`
 
 **完了条件:**
 - [ ] 共通ライブラリの単体テスト (mock AWS SDK)
-- [ ] `npm run build` が通る
-- [ ] `npm run type-check` が通る
+- [ ] `tsc --noEmit` が通る
+- [ ] `vitest` が通る
 
 ---
 
@@ -151,7 +150,7 @@
   - S3 から 4枚の元画像を取得 (`originals/{sessionId}/1.jpg` 〜 `4.jpg`)
   - sharp でフィルター適用 (4枚並列: Promise.all)
     - `natural`: 処理なし（元画像のまま）
-    - `beauty`: `sharp.blur(1.5).sharpen()`（ガウシアンぼかし + シャープ化）
+    - `beauty`: `sharp.blur(1.5).sharpen()`（ガウシアンぼかし + ブレンド）
     - `bright`: `sharp.modulate({ brightness: 1.2 }).linear(1.1, 0)`（明るさ + コントラスト）
     - `mono`: `sharp.greyscale()`
     - `sepia`: `sharp.greyscale().tint({ r: 112, g: 66, b: 20 })`
@@ -189,7 +188,7 @@
   - QR コード生成 (DL URL: `https://{domain}/download/{sessionId}`)
   - レシートレイアウト合成 (ヘッダー + コラージュ + キャプション + 日時 + QR コード)
   - Floyd-Steinberg ディザリングで白黒 2 値変換
-    - sharp で grayscale → raw ピクセルデータ取得
+    - sharp で grayscale → ピクセルデータ取得
     - Floyd-Steinberg アルゴリズムをカスタム実装
   - 印刷用 PNG を S3 に保存 (`print-ready/{sessionId}.png`)
 

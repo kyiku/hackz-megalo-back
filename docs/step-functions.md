@@ -42,7 +42,7 @@ Step Functions Express Workflow で画像処理パイプラインを制御する
 ║                          │                          ║
 ║  ┌──────────────────┐  ┌─▼────────────────────┐    ║
 ║  │ face-detection    │  │ filter-apply          │    ║
-║  │ Rekognition ×4   │  │ [簡易] sharp ~1秒     │    ║
+║  │ Rekognition ×4   │  │ [簡易] sharp ~1秒    │    ║
 ║  │ ~1-2秒           │  │ [AI] Stability ~15秒  │    ║
 ║  └────────┬─────────┘  └──────────┬───────────┘    ║
 ║           └──→ クロップ調整 ──────┘                  ║
@@ -53,7 +53,7 @@ Step Functions Express Workflow で画像処理パイプラインを制御する
 ║                          │                          ║
 ║  ┌──────────────────┐  ┌─▼────────────────────┐    ║
 ║  │ collage-generate  │  │ caption-generate      │    ║
-║  │ sharp 2x2グリッド │  │ Bedrock Claude        │    ║
+║  │ sharp 2x2グリッド│  │ Bedrock Claude        │    ║
 ║  │ ~1-2秒            │  │ + Comprehend 感情分析  │    ║
 ║  └────────┬──────────┘  └──────────┬───────────┘    ║
 ╚═══════════╪════════════════════════╪════════════════╝
