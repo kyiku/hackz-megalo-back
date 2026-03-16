@@ -33,7 +33,7 @@ HackzMegaloBackStack
 #### S3 バケット
 
 ```typescript
-// receipt-purikura-{stage}
+// receipt-purikura-${stage}
 {
   bucketName: `receipt-purikura-${stage}`,
   transferAcceleration: true,     // B-02
@@ -155,7 +155,7 @@ const commonLambdaProps = {
 ```
 
 > `NodejsFunction` (aws-cdk-lib/aws-lambda-nodejs) を使用して esbuild でバンドル。
-> `sharp` を含む Lambda は `bundling.nodeModules: ['sharp']` を指定して native addon を含める。
+> `sharp` を含む Lambda は `bundling.nodeModules` に `sharp` を指定してバンドルに含める。
 
 **関数ごとの設定:**
 
