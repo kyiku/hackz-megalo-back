@@ -40,7 +40,7 @@ function createCommonProps(config: LambdaConfig) {
   return {
     runtime: Runtime.NODEJS_20_X,
     architecture: Architecture.ARM_64,
-    memorySize: 10240,
+    memorySize: 3008,
     tracing: Tracing.ACTIVE,
     timeout: config.timeout,
     handler: 'handler',
