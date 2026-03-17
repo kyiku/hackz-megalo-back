@@ -73,4 +73,13 @@ describe('yaji-comment-deep handler', () => {
 
     expect(result.bucket).toBe('test-bucket')
   })
+
+  it('should return event without error when Bedrock fails', async () => {
+    mockBedrockSend.mockRejectedValue(new Error('Bedrock throttling'))
+
+    const result = await handler(baseInput)
+
+    expect(result.sessionId).toBe('test-uuid')
+    expect(mockSendToSession).not.toHaveBeenCalled()
+  })
 })
