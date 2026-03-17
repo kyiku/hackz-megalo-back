@@ -16,9 +16,14 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       return error('Service configuration error', 500)
     }
 
-    const parsed = CreateSessionSchema.safeParse(
-      JSON.parse(event.body ?? '{}'),
-    )
+    let body: unknown
+    try {
+      body = JSON.parse(event.body ?? '{}')
+    } catch {
+      return error('Invalid JSON in request body', 400)
+    }
+
+    const parsed = CreateSessionSchema.safeParse(body)
     if (!parsed.success) {
       return error(parsed.error.message, 400)
     }
