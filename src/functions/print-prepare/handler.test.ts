@@ -137,4 +137,24 @@ describe('print-prepare handler', () => {
     expect(result.printKey).toBe('print-ready/test-uuid.png')
     expect(mockPutObject).toHaveBeenCalledTimes(2)
   })
+
+  it('should apply sentiment-based frame with high positive score', async () => {
+    const result = await handler({
+      ...baseInput,
+      caption: 'ハッピー！',
+      sentimentScore: 0.95,
+    })
+
+    expect(result.printKey).toBe('print-ready/test-uuid.png')
+  })
+
+  it('should apply sentiment-based frame with low score', async () => {
+    const result = await handler({
+      ...baseInput,
+      caption: '悲しい...',
+      sentimentScore: 0.1,
+    })
+
+    expect(result.printKey).toBe('print-ready/test-uuid.png')
+  })
 })
