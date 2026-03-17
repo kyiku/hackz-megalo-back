@@ -94,6 +94,12 @@ export class Api extends Construct {
   public readonly yajiCommentFastFn: NodejsFunction
   public readonly yajiCommentDeepFn: NodejsFunction
 
+  // Pipeline complete Lambda function
+  public readonly pipelineCompleteFn: NodejsFunction
+
+  // Pipeline error Lambda function
+  public readonly pipelineErrorFn: NodejsFunction
+
   // Stats Lambda function
   public readonly statsUpdateFn: NodejsFunction
 
@@ -139,6 +145,7 @@ export class Api extends Construct {
       timeout: Duration.seconds(10),
       environment: {
         DYNAMODB_TABLE: sessionsTableName,
+        S3_BUCKET: bucketName,
       },
     }))
 
@@ -148,6 +155,7 @@ export class Api extends Construct {
       environment: {
         STATE_MACHINE_ARN: '', // Set later by pipeline construct
         DYNAMODB_TABLE: sessionsTableName,
+        S3_BUCKET: bucketName,
       },
     }))
 
@@ -231,6 +239,8 @@ export class Api extends Construct {
       environment: {
         S3_BUCKET: bucketName,
         DYNAMODB_TABLE: sessionsTableName,
+        CONNECTIONS_TABLE: connectionsTableName,
+        WEBSOCKET_URL: websocketUrl,
       },
     }))
 
@@ -240,6 +250,8 @@ export class Api extends Construct {
       nodeModules: ['sharp'],
       environment: {
         S3_BUCKET: bucketName,
+        CONNECTIONS_TABLE: connectionsTableName,
+        WEBSOCKET_URL: websocketUrl,
       },
     }))
 
@@ -249,6 +261,8 @@ export class Api extends Construct {
       nodeModules: ['sharp'],
       environment: {
         S3_BUCKET: bucketName,
+        CONNECTIONS_TABLE: connectionsTableName,
+        WEBSOCKET_URL: websocketUrl,
       },
     }))
 
@@ -258,6 +272,8 @@ export class Api extends Construct {
       environment: {
         S3_BUCKET: bucketName,
         DYNAMODB_TABLE: sessionsTableName,
+        CONNECTIONS_TABLE: connectionsTableName,
+        WEBSOCKET_URL: websocketUrl,
       },
     }))
 
@@ -267,6 +283,29 @@ export class Api extends Construct {
       nodeModules: ['sharp', 'qrcode'],
       environment: {
         S3_BUCKET: bucketName,
+        CONNECTIONS_TABLE: connectionsTableName,
+        WEBSOCKET_URL: websocketUrl,
+      },
+    }))
+
+    this.pipelineCompleteFn = new NodejsFunction(this, 'PipelineCompleteFn', createCommonProps({
+      name: 'pipeline-complete',
+      timeout: Duration.seconds(30),
+      environment: {
+        S3_BUCKET: bucketName,
+        DYNAMODB_TABLE: sessionsTableName,
+        CONNECTIONS_TABLE: connectionsTableName,
+        WEBSOCKET_URL: websocketUrl,
+      },
+    }))
+
+    this.pipelineErrorFn = new NodejsFunction(this, 'PipelineErrorFn', createCommonProps({
+      name: 'pipeline-error',
+      timeout: Duration.seconds(10),
+      environment: {
+        DYNAMODB_TABLE: sessionsTableName,
+        CONNECTIONS_TABLE: connectionsTableName,
+        WEBSOCKET_URL: websocketUrl,
       },
     }))
 
@@ -354,14 +393,14 @@ export class Api extends Construct {
       },
     })
 
-    // GET /health - Mock Integration
+    // GET /health - Mock Integration with timestamp
     const healthResource = this.restApi.root.addResource('health')
     healthResource.addMethod('GET', new MockIntegration({
       integrationResponses: [
         {
           statusCode: '200',
           responseTemplates: {
-            'application/json': '{"status":"ok"}',
+            'application/json': '{"status":"ok","timestamp":"$context.requestTime"}',
           },
         },
       ],

@@ -97,6 +97,26 @@ npx cdk deploy --all  # デプロイ
 feat/xxx → develop → main
 ```
 
+### コミット・プッシュ・PR の粒度
+
+**1 Lambda 関数（API）ごとに 1 ブランチ・1 PR** を原則とする。
+
+- 機能ブランチ名: `feat/<関数名>` (例: `feat/session-create`, `feat/filter-apply`)
+- 共通ライブラリのみの変更: `feat/common-libs`, `feat/validation` 等
+- コミットは関数内でも細かく分ける（テスト追加 → 実装 → リファクタ）
+- PR は **1 関数の実装が完了したら即作成・マージ**。複数関数をまとめない
+- PR 作成前に `npm run lint && npm run type-check && npm run test` を通すこと
+
+```
+例: session-create の実装フロー
+1. git checkout -b feat/session-create develop
+2. コミット: "test: session-create のテスト追加"
+3. コミット: "feat: session-create Lambda 実装"
+4. git push -u origin feat/session-create
+5. PR 作成 (feat/session-create → develop)
+6. マージ後、次の関数へ
+```
+
 ### コミットメッセージ
 
 ```

@@ -18,6 +18,8 @@ export interface PipelineProps {
   readonly collageGenerateFn: IFunction
   readonly captionGenerateFn: IFunction
   readonly printPrepareFn: IFunction
+  readonly pipelineCompleteFn: IFunction
+  readonly pipelineErrorFn: IFunction
 }
 
 
@@ -28,15 +30,6 @@ export class Pipeline extends Construct {
     super(scope, id)
 
     const { stage } = props
-
-    // -------------------------------------------------------
-    // Update Session: set status to "processing"
-    // -------------------------------------------------------
-    const updateSession = new Pass(this, 'UpdateSession', {
-      comment: 'Set session status to processing',
-      result: { value: 'processing' },
-      resultPath: '$.processingStatus',
-    })
 
     // -------------------------------------------------------
     // Phase 1: Parallel(face-detection, filter-apply)
@@ -51,12 +44,12 @@ export class Pipeline extends Construct {
       maxAttempts: 2,
       backoffRate: 2.0,
     })
-    // face-detection is optional: catch errors and continue
+    // face-detection is optional: catch errors and return empty faces
     faceDetectionStep.addCatch(
       new Pass(this, 'FaceDetectionFallback', {
         comment: 'Face detection failed, continue without face data',
         result: { value: { faces: [] } },
-        resultPath: '$.Payload',
+        outputPath: '$.value',
       }),
       { resultPath: '$.faceDetectionError' },
     )
@@ -76,8 +69,24 @@ export class Pipeline extends Construct {
       .branch(faceDetectionStep)
       .branch(filterApplyStep)
 
+    // Merge Phase 1: take filter-apply output and add faces from face-detection
+    // Phase1 output: [$[0] = face-detection, $[1] = filter-apply]
+    const mergePhase1 = new Pass(this, 'MergePhase1', {
+      comment: 'Merge face-detection faces into filter-apply output',
+      parameters: {
+        'sessionId.$': '$[1].sessionId',
+        'createdAt.$': '$[1].createdAt',
+        'filterType.$': '$[1].filterType',
+        'filter.$': '$[1].filter',
+        'images.$': '$[1].images',
+        'bucket.$': '$[1].bucket',
+        'filteredImages.$': '$[1].filteredImages',
+        'faces.$': '$[0].faces',
+      },
+    })
+
     // -------------------------------------------------------
-    // Phase 2: Parallel(collage-generate, caption-generate)
+    // Phase 2: collage-generate (sequential, needs filteredImages)
     // -------------------------------------------------------
     const collageGenerateStep = new LambdaInvoke(this, 'CollageGenerate', {
       lambdaFunction: props.collageGenerateFn,
@@ -90,6 +99,10 @@ export class Pipeline extends Construct {
       backoffRate: 2.0,
     })
 
+    // -------------------------------------------------------
+    // Phase 3: caption-generate (sequential, optional)
+    // Runs before print-prepare so caption can be included in layout
+    // -------------------------------------------------------
     const captionGenerateStep = new LambdaInvoke(this, 'CaptionGenerate', {
       lambdaFunction: props.captionGenerateFn,
       outputPath: '$.Payload',
@@ -104,18 +117,12 @@ export class Pipeline extends Construct {
     captionGenerateStep.addCatch(
       new Pass(this, 'CaptionGenerateFallback', {
         comment: 'Caption generation failed, continue without caption',
-        result: { value: { caption: '', sentiment: 'NEUTRAL', sentimentScore: 0.5 } },
-        resultPath: '$.Payload',
       }),
       { resultPath: '$.captionGenerateError' },
     )
 
-    const phase2 = new Parallel(this, 'Phase2-CollageAndCaption')
-      .branch(collageGenerateStep)
-      .branch(captionGenerateStep)
-
     // -------------------------------------------------------
-    // Phase 3: print-prepare
+    // Phase 4: print-prepare (receives caption from Phase 3)
     // -------------------------------------------------------
     const printPrepareStep = new LambdaInvoke(this, 'PrintPrepare', {
       lambdaFunction: props.printPrepareFn,
@@ -129,41 +136,48 @@ export class Pipeline extends Construct {
     })
 
     // -------------------------------------------------------
-    // Phase 4: Parallel outputs
-    // (Simplified as Pass states for now)
+    // Phase 5: pipeline-complete
     // -------------------------------------------------------
-    const dynamoUpdateStep = new Pass(this, 'DynamoUpdate', {
-      comment: 'Update DynamoDB session status to completed',
+    const pipelineCompleteStep = new LambdaInvoke(this, 'PipelineComplete', {
+      lambdaFunction: props.pipelineCompleteFn,
+      outputPath: '$.Payload',
+    })
+    pipelineCompleteStep.addRetry({
+      errors: ['States.TaskFailed', 'States.Timeout'],
+      interval: Duration.seconds(2),
+      maxAttempts: 2,
+      backoffRate: 2.0,
     })
 
-    const iotPublishStep = new Pass(this, 'IoTPublish', {
-      comment: 'Publish print job via IoT Core MQTT',
+    // -------------------------------------------------------
+    // Error handler: update status to 'failed' + send WebSocket error event
+    // -------------------------------------------------------
+    const pipelineErrorStep = new LambdaInvoke(this, 'PipelineError', {
+      lambdaFunction: props.pipelineErrorFn,
+      outputPath: '$.Payload',
     })
 
-    const websocketNotifyStep = new Pass(this, 'WebSocketNotify', {
-      comment: 'Send completed notification via WebSocket',
-    })
-
-    const phase4 = new Parallel(this, 'Phase4-Outputs')
-      .branch(dynamoUpdateStep)
-      .branch(iotPublishStep)
-      .branch(websocketNotifyStep)
-
     // -------------------------------------------------------
-    // Chain all phases
+    // Chain all phases, wrapped in Parallel for global catch
+    // Phase1(face+filter) → merge → collage → caption → print → complete
     // -------------------------------------------------------
-    const workflow = Chain.start(updateSession)
-      .next(phase1)
-      .next(phase2)
+    const mainPipeline = Chain.start(phase1)
+      .next(mergePhase1)
+      .next(collageGenerateStep)
+      .next(captionGenerateStep)
       .next(printPrepareStep)
-      .next(phase4)
+      .next(pipelineCompleteStep)
+
+    const pipelineWithCatch = new Parallel(this, 'PipelineWithCatch')
+      .branch(mainPipeline)
+      .addCatch(pipelineErrorStep, { resultPath: '$.pipelineError' })
 
     this.stateMachine = new StateMachine(this, 'StateMachine', {
       stateMachineName: `receipt-purikura-pipeline-${stage}`,
       stateMachineType: StateMachineType.EXPRESS,
       tracingEnabled: true,
       timeout: Duration.minutes(5),
-      definitionBody: DefinitionBody.fromChainable(workflow),
+      definitionBody: DefinitionBody.fromChainable(pipelineWithCatch),
     })
   }
 }

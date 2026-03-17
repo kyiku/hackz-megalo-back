@@ -33,6 +33,8 @@ export class AppStack extends cdk.Stack {
       collageGenerateFn: api.collageGenerateTarget,
       captionGenerateFn: api.captionGenerateFn,
       printPrepareFn: api.printPrepareTarget,
+      pipelineCompleteFn: api.pipelineCompleteFn,
+      pipelineErrorFn: api.pipelineErrorFn,
     })
 
     const realtime = new Realtime(this, 'Realtime', { stage })
@@ -101,8 +103,9 @@ export class AppStack extends cdk.Stack {
     storage.sessionsTable.grantWriteData(api.sessionCreateFn)
     storage.bucket.grantReadWrite(api.sessionCreateFn)
 
-    // session-get: DynamoDB GetItem on sessions
+    // session-get: DynamoDB GetItem on sessions, S3 GetObject for presigned URLs
     storage.sessionsTable.grantReadData(api.sessionGetFn)
+    storage.bucket.grantRead(api.sessionGetFn)
 
     // process-start: Step Functions StartExecution, DynamoDB UpdateItem
     pipeline.stateMachine.grantStartExecution(api.processStartFn)
@@ -148,26 +151,42 @@ export class AppStack extends cdk.Stack {
       resources: [webSocketApiArn],
     }))
 
-    // face-detection: S3 GetObject, Rekognition
+    // face-detection: S3 GetObject, Rekognition, WebSocket (progress notifications)
     storage.bucket.grantRead(api.faceDetectionFn)
+    storage.connectionsTable.grantReadData(api.faceDetectionFn)
     api.faceDetectionFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['rekognition:DetectFaces'],
       resources: ['*'],
     }))
+    api.faceDetectionFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['execute-api:ManageConnections'],
+      resources: [webSocketApiArn],
+    }))
 
-    // filter-apply: S3 read/write, Bedrock
+    // filter-apply: S3 read/write, Bedrock, WebSocket (progress notifications)
     storage.bucket.grantReadWrite(api.filterApplyFn)
+    storage.connectionsTable.grantReadData(api.filterApplyFn)
     api.filterApplyFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['bedrock:InvokeModel'],
       resources: ['*'],
     }))
+    api.filterApplyFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['execute-api:ManageConnections'],
+      resources: [webSocketApiArn],
+    }))
 
-    // collage-generate: S3 read/write
+    // collage-generate: S3 read/write, WebSocket (progress notifications)
     storage.bucket.grantReadWrite(api.collageGenerateFn)
+    storage.connectionsTable.grantReadData(api.collageGenerateFn)
+    api.collageGenerateFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['execute-api:ManageConnections'],
+      resources: [webSocketApiArn],
+    }))
 
-    // caption-generate: S3 GetObject, DynamoDB UpdateItem, Bedrock + Comprehend
+    // caption-generate: S3 GetObject, DynamoDB UpdateItem, Bedrock + Comprehend, WebSocket
     storage.bucket.grantRead(api.captionGenerateFn)
     storage.sessionsTable.grantWriteData(api.captionGenerateFn)
+    storage.connectionsTable.grantReadData(api.captionGenerateFn)
     api.captionGenerateFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['bedrock:InvokeModel'],
       resources: ['*'],
@@ -176,9 +195,38 @@ export class AppStack extends cdk.Stack {
       actions: ['comprehend:DetectSentiment'],
       resources: ['*'],
     }))
+    api.captionGenerateFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['execute-api:ManageConnections'],
+      resources: [webSocketApiArn],
+    }))
 
-    // print-prepare: S3 read/write
+    // print-prepare: S3 read/write, WebSocket (progress notifications)
     storage.bucket.grantReadWrite(api.printPrepareFn)
+    storage.connectionsTable.grantReadData(api.printPrepareFn)
+    api.printPrepareFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['execute-api:ManageConnections'],
+      resources: [webSocketApiArn],
+    }))
+
+    // pipeline-complete: DynamoDB write, connections read, WebSocket, IoT Core
+    storage.sessionsTable.grantWriteData(api.pipelineCompleteFn)
+    storage.connectionsTable.grantReadData(api.pipelineCompleteFn)
+    api.pipelineCompleteFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['execute-api:ManageConnections'],
+      resources: [webSocketApiArn],
+    }))
+    api.pipelineCompleteFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['iot:Publish'],
+      resources: ['*'],
+    }))
+
+    // pipeline-error: DynamoDB write (sessions), connections read, WebSocket
+    storage.sessionsTable.grantWriteData(api.pipelineErrorFn)
+    storage.connectionsTable.grantReadData(api.pipelineErrorFn)
+    api.pipelineErrorFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['execute-api:ManageConnections'],
+      resources: [webSocketApiArn],
+    }))
 
     // yaji-comment-fast: S3 GetObject, DynamoDB Query connections, ManageConnections, Rekognition
     storage.bucket.grantRead(api.yajiCommentFastFn)
