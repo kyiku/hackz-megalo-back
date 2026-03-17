@@ -57,7 +57,7 @@ describe('collage-generate handler', () => {
   it('should generate collage and save to S3', async () => {
     const result = await handler(baseInput)
 
-    expect(mockGetObject).toHaveBeenCalledTimes(4)
+    expect(mockGetObject).toHaveBeenCalledTimes(5) // 4 images + 1 metadata check
     expect(mockPutObject).toHaveBeenCalledOnce()
     expect(result.collageKey).toBe('collages/test-uuid.png')
   })
@@ -92,7 +92,7 @@ describe('collage-generate handler', () => {
       filteredImages: ['filtered/test-uuid/1.png'],
     })
 
-    expect(mockGetObject).toHaveBeenCalledTimes(1)
+    expect(mockGetObject).toHaveBeenCalledTimes(2) // 1 image + 1 metadata check
     expect(mockSharpInstance.composite).toHaveBeenCalledOnce()
     expect(result.collageKey).toBe('collages/test-uuid.png')
   })
@@ -103,7 +103,7 @@ describe('collage-generate handler', () => {
       filteredImages: ['filtered/test-uuid/1.png', 'filtered/test-uuid/2.png'],
     })
 
-    expect(mockGetObject).toHaveBeenCalledTimes(2)
+    expect(mockGetObject).toHaveBeenCalledTimes(3) // 2 images + 1 metadata
     expect(result.collageKey).toBe('collages/test-uuid.png')
   })
 
@@ -117,7 +117,7 @@ describe('collage-generate handler', () => {
       ],
     })
 
-    expect(mockGetObject).toHaveBeenCalledTimes(3)
+    expect(mockGetObject).toHaveBeenCalledTimes(4) // 3 images + 1 metadata
     expect(result.collageKey).toBe('collages/test-uuid.png')
   })
 
