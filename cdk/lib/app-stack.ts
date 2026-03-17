@@ -1,20 +1,26 @@
 import * as cdk from 'aws-cdk-lib'
 import * as iam from 'aws-cdk-lib/aws-iam'
+import * as events from 'aws-cdk-lib/aws-events'
+import * as targets from 'aws-cdk-lib/aws-events-targets'
 import type { Construct } from 'constructs'
 
 import { Storage } from './constructs/storage'
 import { Api } from './constructs/api'
 import { Pipeline } from './constructs/pipeline'
 import { Realtime } from './constructs/realtime'
+import { Waf } from './constructs/waf'
+import { Monitoring } from './constructs/monitoring'
+import { Cdn } from './constructs/cdn'
 
 export class AppStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props)
 
     const stage = this.node.tryGetContext('stage') ?? 'dev'
+    const isProd = stage === 'prod'
 
     // -------------------------------------------------------
-    // Constructs
+    // Core Constructs
     // -------------------------------------------------------
     const storage = new Storage(this, 'Storage', { stage })
 
@@ -23,10 +29,10 @@ export class AppStack extends cdk.Stack {
     const pipeline = new Pipeline(this, 'Pipeline', {
       stage,
       faceDetectionFn: api.faceDetectionFn,
-      filterApplyFn: api.filterApplyFn,
-      collageGenerateFn: api.collageGenerateFn,
+      filterApplyFn: api.filterApplyTarget,
+      collageGenerateFn: api.collageGenerateTarget,
       captionGenerateFn: api.captionGenerateFn,
-      printPrepareFn: api.printPrepareFn,
+      printPrepareFn: api.printPrepareTarget,
       pipelineCompleteFn: api.pipelineCompleteFn,
     })
 
@@ -46,6 +52,47 @@ export class AppStack extends cdk.Stack {
         Stage: stage,
       },
     )
+
+    // -------------------------------------------------------
+    // EventBridge: S3 upload → Step Functions
+    // -------------------------------------------------------
+    new events.Rule(this, 'S3UploadRule', {
+      ruleName: `receipt-purikura-s3-upload-${stage}`,
+      eventPattern: {
+        source: ['aws.s3'],
+        detailType: ['Object Created'],
+        detail: {
+          bucket: { name: [storage.bucket.bucketName] },
+          object: { key: [{ prefix: 'originals/' }] },
+        },
+      },
+      targets: [new targets.SfnStateMachine(pipeline.stateMachine)],
+    })
+
+    // -------------------------------------------------------
+    // Production-Only Constructs
+    // -------------------------------------------------------
+    if (isProd) {
+      // WAF - API Gateway firewall
+      new Waf(this, 'Waf', {
+        stage,
+        restApi: api.restApi,
+      })
+
+      // CDN - CloudFront distribution
+      new Cdn(this, 'Cdn', {
+        stage,
+        bucket: storage.bucket,
+      })
+
+      // Monitoring - Synthetics + Alarms + Dashboard
+      new Monitoring(this, 'Monitoring', {
+        stage,
+        healthUrl: api.restApi.url,
+        alarmTopic: realtime.alarmTopic,
+        stateMachine: pipeline.stateMachine,
+      })
+    }
 
     // -------------------------------------------------------
     // IAM Permissions
@@ -216,6 +263,14 @@ export class AppStack extends cdk.Stack {
 
     new cdk.CfnOutput(this, 'SessionsTableName', {
       value: storage.sessionsTable.tableName,
+    })
+
+    new cdk.CfnOutput(this, 'PrintCompleteTopicArn', {
+      value: realtime.printCompleteTopic.topicArn,
+    })
+
+    new cdk.CfnOutput(this, 'AlarmTopicArn', {
+      value: realtime.alarmTopic.topicArn,
     })
   }
 }
