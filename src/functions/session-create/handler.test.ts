@@ -141,6 +141,16 @@ describe('session-create handler', () => {
     expect(response.statusCode).toBe(400)
   })
 
+  it('should return 400 for malformed JSON body', async () => {
+    const event = { ...createEvent({}), body: '{invalid json' } as APIGatewayProxyEvent
+
+    const response = await invoke(event)
+    expect(response.statusCode).toBe(400)
+
+    const body = JSON.parse(response.body) as { error: string }
+    expect(body.error).toBe('Invalid JSON in request body')
+  })
+
   it('should return 500 when DynamoDB fails', async () => {
     mockPutSession.mockRejectedValueOnce(new Error('DynamoDB error'))
     mockGeneratePresignedUploadUrl.mockResolvedValue('https://presigned/url')
