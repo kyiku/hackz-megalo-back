@@ -111,4 +111,25 @@ describe('caption-generate handler', () => {
     expect(result.sessionId).toBe('test-uuid')
     expect(result.collageKey).toBe('collages/test-uuid.png')
   })
+
+  it('should return empty caption when Bedrock fails', async () => {
+    mockBedrockSend.mockRejectedValue(new Error('Bedrock throttling'))
+
+    const result = await handler(baseInput)
+
+    expect(result.caption).toBe('')
+    expect(result.sentiment).toBe('NEUTRAL')
+    expect(result.sentimentScore).toBe(0)
+    expect(mockUpdateSession).toHaveBeenCalled()
+  })
+
+  it('should return default sentiment when Comprehend fails', async () => {
+    mockComprehendSend.mockRejectedValue(new Error('Comprehend error'))
+
+    const result = await handler(baseInput)
+
+    expect(result.caption).toBe('楽しい思い出の一枚！')
+    expect(result.sentiment).toBe('NEUTRAL')
+    expect(result.sentimentScore).toBe(0)
+  })
 })
