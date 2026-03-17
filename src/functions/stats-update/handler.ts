@@ -5,7 +5,7 @@ import { DynamoDBDocumentClient, UpdateCommand } from '@aws-sdk/lib-dynamodb'
 const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}))
 
 export const handler: DynamoDBStreamHandler = async (event) => {
-  const tableName = process.env.STATS_TABLE
+  const tableName = process.env.STATS_TABLE ?? process.env.DYNAMODB_TABLE
   if (!tableName) return
 
   for (const record of event.Records) {
