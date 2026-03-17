@@ -105,6 +105,25 @@ describe('dynamodb', () => {
       await updateSession('test-id', '2026-03-16T14:30:00Z', {})
       expect(mockSend).not.toHaveBeenCalled()
     })
+
+    it('should filter out disallowed fields', async () => {
+      mockSend.mockResolvedValueOnce({})
+      await updateSession('test-id', '2026-03-16T14:30:00Z', {
+        status: 'completed',
+        sessionId: 'hacked',
+        createdAt: 'hacked',
+      })
+      expect(mockSend).toHaveBeenCalledOnce()
+    })
+
+    it('should skip update entirely when only disallowed fields are provided', async () => {
+      await updateSession('test-id', '2026-03-16T14:30:00Z', {
+        sessionId: 'hacked',
+        createdAt: 'hacked',
+        ttl: 999,
+      })
+      expect(mockSend).not.toHaveBeenCalled()
+    })
   })
 
   describe('putConnection', () => {
