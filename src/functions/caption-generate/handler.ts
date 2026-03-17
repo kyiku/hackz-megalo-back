@@ -2,7 +2,8 @@ import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedroc
 import { ComprehendClient, DetectSentimentCommand } from '@aws-sdk/client-comprehend'
 import { getObject } from '../../lib/s3'
 import { updateSession } from '../../lib/dynamodb'
-import type { PipelineInput } from '../../lib/types'
+import { sendToSession } from '../../lib/websocket'
+import type { PipelineInput, ProgressEvent } from '../../lib/types'
 
 const bedrock = new BedrockRuntimeClient({})
 const comprehend = new ComprehendClient({})
@@ -22,8 +23,18 @@ interface BedrockResponse {
   readonly content: readonly { readonly text: string }[]
 }
 
+const notify = async (sessionId: string, progress: number, message: string): Promise<void> => {
+  const event: ProgressEvent = {
+    type: 'statusUpdate',
+    data: { sessionId, status: 'processing', step: 'caption-generate', progress, message },
+  }
+  await sendToSession(sessionId, event).catch(() => undefined)
+}
+
 export const handler = async (event: CaptionInput): Promise<CaptionOutput> => {
   const { sessionId, createdAt, collageKey } = event
+
+  await notify(sessionId, 55, 'キャプション生成中...')
 
   // Get collage image for Bedrock
   const imageBuffer = await getObject(collageKey)

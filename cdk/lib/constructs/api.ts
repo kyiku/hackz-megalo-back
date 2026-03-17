@@ -229,6 +229,8 @@ export class Api extends Construct {
       environment: {
         S3_BUCKET: bucketName,
         DYNAMODB_TABLE: sessionsTableName,
+        CONNECTIONS_TABLE: connectionsTableName,
+        WEBSOCKET_URL: websocketUrl,
       },
     }))
 

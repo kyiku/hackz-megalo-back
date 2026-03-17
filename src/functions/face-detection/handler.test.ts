@@ -1,7 +1,8 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 
-const { mockRekognitionSend } = vi.hoisted(() => ({
+const { mockRekognitionSend, mockSendToSession } = vi.hoisted(() => ({
   mockRekognitionSend: vi.fn(),
+  mockSendToSession: vi.fn(),
 }))
 
 vi.mock('@aws-sdk/client-rekognition', () => ({
@@ -11,6 +12,10 @@ vi.mock('@aws-sdk/client-rekognition', () => ({
   DetectFacesCommand: class {
     constructor(public input: unknown) {}
   },
+}))
+
+vi.mock('../../lib/websocket', () => ({
+  sendToSession: (...args: unknown[]) => mockSendToSession(...args) as unknown,
 }))
 
 import { handler } from './handler'
@@ -37,6 +42,7 @@ const mockFaceDetail = {
 describe('face-detection handler', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockSendToSession.mockResolvedValue(undefined)
   })
 
   it('should detect faces in all images', async () => {

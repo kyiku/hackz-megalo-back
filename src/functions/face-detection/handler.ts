@@ -1,5 +1,6 @@
 import { RekognitionClient, DetectFacesCommand } from '@aws-sdk/client-rekognition'
-import type { PipelineInput } from '../../lib/types'
+import { sendToSession } from '../../lib/websocket'
+import type { PipelineInput, ProgressEvent } from '../../lib/types'
 
 const rekognition = new RekognitionClient({})
 
@@ -21,8 +22,18 @@ interface FaceDetectionOutput extends PipelineInput {
   readonly faces: readonly FaceResult[]
 }
 
+const notify = async (sessionId: string, progress: number, message: string): Promise<void> => {
+  const event: ProgressEvent = {
+    type: 'statusUpdate',
+    data: { sessionId, status: 'processing', step: 'face-detection', progress, message },
+  }
+  await sendToSession(sessionId, event).catch(() => undefined)
+}
+
 export const handler = async (event: PipelineInput): Promise<FaceDetectionOutput> => {
-  const { images, bucket } = event
+  const { sessionId, images, bucket } = event
+
+  await notify(sessionId, 5, '顔を検出中...')
 
   const faces = await Promise.all(
     images.map(async (imageKey) => {
