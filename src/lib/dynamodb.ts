@@ -49,12 +49,24 @@ export const putSession = async (session: Session): Promise<void> => {
   )
 }
 
+const ALLOWED_SESSION_FIELDS = new Set([
+  'status',
+  'caption',
+  'sentiment',
+  'sentimentScore',
+  'originalImageKeys',
+  'filteredImageKeys',
+  'collageImageKey',
+  'printImageKey',
+  'downloadKey',
+])
+
 export const updateSession = async (
   sessionId: string,
   createdAt: string,
   updates: Record<string, unknown>,
 ): Promise<void> => {
-  const entries = Object.entries(updates)
+  const entries = Object.entries(updates).filter(([key]) => ALLOWED_SESSION_FIELDS.has(key))
   if (entries.length === 0) return
 
   const expressionParts: string[] = []
