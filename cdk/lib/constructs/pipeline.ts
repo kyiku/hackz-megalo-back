@@ -43,10 +43,12 @@ export class Pipeline extends Construct {
       maxAttempts: 2,
       backoffRate: 2.0,
     })
-    // face-detection is optional: catch errors and continue
+    // face-detection is optional: catch errors and return empty faces
     faceDetectionStep.addCatch(
       new Pass(this, 'FaceDetectionFallback', {
         comment: 'Face detection failed, continue without face data',
+        result: { value: { faces: [] } },
+        outputPath: '$.value',
       }),
       { resultPath: '$.faceDetectionError' },
     )
@@ -66,10 +68,20 @@ export class Pipeline extends Construct {
       .branch(faceDetectionStep)
       .branch(filterApplyStep)
 
-    // Merge Phase 1: take filter-apply output (index 1) which has filteredImages
+    // Merge Phase 1: take filter-apply output and add faces from face-detection
+    // Phase1 output: [$[0] = face-detection, $[1] = filter-apply]
     const mergePhase1 = new Pass(this, 'MergePhase1', {
-      comment: 'Take filter-apply output with filteredImages',
-      inputPath: '$[1]',
+      comment: 'Merge face-detection faces into filter-apply output',
+      parameters: {
+        'sessionId.$': '$[1].sessionId',
+        'createdAt.$': '$[1].createdAt',
+        'filterType.$': '$[1].filterType',
+        'filter.$': '$[1].filter',
+        'images.$': '$[1].images',
+        'bucket.$': '$[1].bucket',
+        'filteredImages.$': '$[1].filteredImages',
+        'faces.$': '$[0].faces',
+      },
     })
 
     // -------------------------------------------------------
@@ -123,7 +135,7 @@ export class Pipeline extends Construct {
     })
 
     // -------------------------------------------------------
-    // Phase 4: pipeline-complete
+    // Phase 5: pipeline-complete
     // -------------------------------------------------------
     const pipelineCompleteStep = new LambdaInvoke(this, 'PipelineComplete', {
       lambdaFunction: props.pipelineCompleteFn,
@@ -138,7 +150,7 @@ export class Pipeline extends Construct {
 
     // -------------------------------------------------------
     // Chain all phases
-    // Phase1(face+filter) → collage → caption → print → complete
+    // Phase1(face+filter) → merge → collage → caption → print → complete
     // -------------------------------------------------------
     const workflow = Chain.start(phase1)
       .next(mergePhase1)
