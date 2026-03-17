@@ -1,0 +1,36 @@
+type Stats {
+  totalSessions: Int!
+  completedSessions: Int!
+  failedSessions: Int!
+  lastUpdated: String!
+}
+
+type Session {
+  sessionId: String!
+  createdAt: String!
+  status: String!
+  filterType: String!
+  filter: String!
+  caption: String
+  photoCount: Int
+}
+
+input StatsInput {
+  totalSessions: Int!
+  completedSessions: Int!
+  failedSessions: Int!
+}
+
+type Query {
+  getStats: Stats!
+  getSession(sessionId: String!): Session
+}
+
+type Mutation {
+  publishStats(input: StatsInput!): Stats!
+}
+
+type Subscription {
+  onStatsUpdated: Stats
+    @aws_subscribe(mutations: ["publishStats"])
+}
