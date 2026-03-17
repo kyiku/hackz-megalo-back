@@ -83,4 +83,64 @@ describe('collage-generate handler', () => {
     // Each filtered image gets resized
     expect(mockSharpInstance.resize).toHaveBeenCalled()
   })
+
+  it('should use face data for smart crop when provided', async () => {
+    const faces = [
+      {
+        imageKey: 'originals/test-uuid/1.jpg',
+        details: [
+          {
+            boundingBox: { width: 0.3, height: 0.4, left: 0.6, top: 0.1 },
+            confidence: 99.5,
+          },
+        ],
+      },
+      {
+        imageKey: 'originals/test-uuid/2.jpg',
+        details: [
+          {
+            boundingBox: { width: 0.2, height: 0.3, left: 0.4, top: 0.2 },
+            confidence: 98.0,
+          },
+        ],
+      },
+      { imageKey: 'originals/test-uuid/3.jpg', details: [] },
+      { imageKey: 'originals/test-uuid/4.jpg', details: [] },
+    ]
+
+    const result = await handler({ ...baseInput, faces })
+
+    // extract is called for each image (smart crop or center crop)
+    expect(mockSharpInstance.extract).toHaveBeenCalledTimes(4)
+    expect(result.collageKey).toBe('collages/test-uuid.png')
+  })
+
+  it('should fall back to center crop when no face data', async () => {
+    const result = await handler(baseInput)
+
+    expect(mockSharpInstance.extract).toHaveBeenCalledTimes(4)
+    expect(result.collageKey).toBe('collages/test-uuid.png')
+  })
+
+  it('should handle faces with empty details for some images', async () => {
+    const faces = [
+      {
+        imageKey: 'originals/test-uuid/1.jpg',
+        details: [
+          {
+            boundingBox: { width: 0.3, height: 0.4, left: 0.5, top: 0.2 },
+            confidence: 99.0,
+          },
+        ],
+      },
+      { imageKey: 'originals/test-uuid/2.jpg', details: [] },
+      { imageKey: 'originals/test-uuid/3.jpg', details: [] },
+      { imageKey: 'originals/test-uuid/4.jpg', details: [] },
+    ]
+
+    const result = await handler({ ...baseInput, faces })
+
+    expect(result.collageKey).toBe('collages/test-uuid.png')
+    expect(mockPutObject).toHaveBeenCalledOnce()
+  })
 })
