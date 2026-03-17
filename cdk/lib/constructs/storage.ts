@@ -48,6 +48,7 @@ export class Storage extends Construct {
       ],
       removalPolicy: RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
+      eventBridgeEnabled: true,
     })
 
     // DynamoDB Sessions Table
