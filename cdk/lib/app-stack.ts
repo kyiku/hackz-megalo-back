@@ -125,9 +125,9 @@ export class AppStack extends cdk.Stack {
     storage.sessionsTable.grantReadData(api.sessionGetFn)
     storage.bucket.grantRead(api.sessionGetFn)
 
-    // process-start: Step Functions StartExecution, DynamoDB UpdateItem
+    // process-start: Step Functions StartExecution, DynamoDB Query + UpdateItem
     pipeline.stateMachine.grantStartExecution(api.processStartFn)
-    storage.sessionsTable.grantWriteData(api.processStartFn)
+    storage.sessionsTable.grantReadWriteData(api.processStartFn)
 
     // ws-connect: DynamoDB write on connections
     storage.connectionsTable.grantWriteData(api.wsConnectFn)
