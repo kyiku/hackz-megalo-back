@@ -3,8 +3,6 @@ import * as iam from 'aws-cdk-lib/aws-iam'
 import { StartingPosition } from 'aws-cdk-lib/aws-lambda'
 import { DynamoEventSource } from 'aws-cdk-lib/aws-lambda-event-sources'
 import * as appsync from 'aws-cdk-lib/aws-appsync'
-import * as events from 'aws-cdk-lib/aws-events'
-import * as targets from 'aws-cdk-lib/aws-events-targets'
 import type { Construct } from 'constructs'
 
 import { Storage } from './constructs/storage'
@@ -68,21 +66,11 @@ export class AppStack extends cdk.Stack {
       },
     )
 
-    // -------------------------------------------------------
-    // EventBridge: S3 upload → Step Functions
-    // -------------------------------------------------------
-    new events.Rule(this, 'S3UploadRule', {
-      ruleName: `receipt-purikura-s3-upload-${stage}`,
-      eventPattern: {
-        source: ['aws.s3'],
-        detailType: ['Object Created'],
-        detail: {
-          bucket: { name: [storage.bucket.bucketName] },
-          object: { key: [{ prefix: 'originals/' }] },
-        },
-      },
-      targets: [new targets.SfnStateMachine(pipeline.stateMachine)],
-    })
+    // NOTE: S3 upload → Step Functions EventBridge rule removed.
+    // Pipeline is started exclusively by process-start Lambda via StartExecution
+    // with a fully-formed PipelineInput. An EventBridge S3 rule would trigger
+    // a second execution with the raw S3 event (no images/sessionId fields),
+    // causing face-detection to crash with "Cannot read properties of undefined".
 
     // -------------------------------------------------------
     // Production-Only Constructs
