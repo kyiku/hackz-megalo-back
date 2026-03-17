@@ -1,9 +1,10 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 
-const { mockIotSend, mockUpdateSession, mockSendToSession } = vi.hoisted(() => ({
+const { mockIotSend, mockUpdateSession, mockSendToSession, mockGeneratePresignedDownloadUrl } = vi.hoisted(() => ({
   mockIotSend: vi.fn(),
   mockUpdateSession: vi.fn(),
   mockSendToSession: vi.fn(),
+  mockGeneratePresignedDownloadUrl: vi.fn(),
 }))
 
 vi.mock('@aws-sdk/client-iot-data-plane', () => ({
@@ -17,6 +18,11 @@ vi.mock('@aws-sdk/client-iot-data-plane', () => ({
 
 vi.mock('../../lib/dynamodb', () => ({
   updateSession: (...args: unknown[]) => mockUpdateSession(...args) as unknown,
+}))
+
+vi.mock('../../lib/s3', () => ({
+  generatePresignedDownloadUrl: (...args: unknown[]) =>
+    mockGeneratePresignedDownloadUrl(...args) as unknown,
 }))
 
 vi.mock('../../lib/websocket', () => ({
@@ -45,6 +51,7 @@ describe('pipeline-complete handler', () => {
     mockIotSend.mockResolvedValue(undefined)
     mockUpdateSession.mockResolvedValue(undefined)
     mockSendToSession.mockResolvedValue(undefined)
+    mockGeneratePresignedDownloadUrl.mockResolvedValue('https://presigned/collage-url')
   })
 
   it('should publish print job to IoT Core', async () => {
@@ -68,13 +75,21 @@ describe('pipeline-complete handler', () => {
     )
   })
 
-  it('should send completed event via WebSocket', async () => {
+  it('should send completed event with presigned URL via WebSocket', async () => {
     await handler(baseInput)
 
+    expect(mockGeneratePresignedDownloadUrl).toHaveBeenCalledWith(
+      'downloads/test-uuid.png',
+      3600,
+    )
     expect(mockSendToSession).toHaveBeenCalledWith(
       'test-uuid',
       expect.objectContaining({
         type: 'completed',
+        data: expect.objectContaining({
+          sessionId: 'test-uuid',
+          collageImageUrl: 'https://presigned/collage-url',
+        }) as Record<string, unknown>,
       }),
     )
   })
