@@ -7,6 +7,9 @@ import type { PipelineInput, ProgressEvent } from '../../lib/types'
 interface PrintPrepareInput extends PipelineInput {
   readonly filteredImages: readonly string[]
   readonly collageKey: string
+  readonly caption?: string
+  readonly sentiment?: string
+  readonly sentimentScore?: number
 }
 
 interface PrintPrepareOutput extends PrintPrepareInput {
@@ -55,8 +58,32 @@ const notify = async (sessionId: string, progress: number, message: string): Pro
   await sendToSession(sessionId, event).catch(() => undefined)
 }
 
+/** Create an SVG text overlay for caption. */
+const createCaptionSvg = (text: string, width: number): Buffer => {
+  const escaped = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+  const svg = `<svg width="${String(width)}" height="40">
+    <text x="${String(width / 2)}" y="28" font-size="18" font-family="sans-serif"
+      text-anchor="middle" fill="black">${escaped}</text>
+  </svg>`
+  return Buffer.from(svg)
+}
+
+/** Create an SVG text overlay for timestamp. */
+const createTimestampSvg = (width: number): Buffer => {
+  const now = new Date()
+  const ts = `${String(now.getFullYear())}.${String(now.getMonth() + 1).padStart(2, '0')}.${String(now.getDate()).padStart(2, '0')}`
+  const svg = `<svg width="${String(width)}" height="30">
+    <text x="${String(width / 2)}" y="20" font-size="14" font-family="monospace"
+      text-anchor="middle" fill="gray">${ts}</text>
+  </svg>`
+  return Buffer.from(svg)
+}
+
 export const handler = async (event: PrintPrepareInput): Promise<PrintPrepareOutput> => {
-  const { sessionId, collageKey } = event
+  const { sessionId, collageKey, caption } = event
 
   await notify(sessionId, 60, '印刷データ準備中...')
 
@@ -74,39 +101,59 @@ export const handler = async (event: PrintPrepareInput): Promise<PrintPrepareOut
     margin: 1,
   })
 
-  // Build print layout: collage + QR code at bottom
-  const qrComposite = await sharp(collageBuffer)
+  // Calculate layout height: collage + caption(40) + timestamp(30) + QR(120+15padding) + margin
+  const captionHeight = caption ? 40 : 0
+  const timestampHeight = 30
+  const qrHeight = 135
+  const bottomExtension = captionHeight + timestampHeight + qrHeight
+
+  // Build composite overlays
+  const overlays: sharp.OverlayOptions[] = []
+  let yOffset = PRINT_WIDTH
+
+  if (caption) {
+    overlays.push({
+      input: createCaptionSvg(caption, PRINT_WIDTH),
+      left: 0,
+      top: yOffset,
+    })
+    yOffset += captionHeight
+  }
+
+  overlays.push({
+    input: createTimestampSvg(PRINT_WIDTH),
+    left: 0,
+    top: yOffset,
+  })
+  yOffset += timestampHeight
+
+  overlays.push({
+    input: await sharp(qrBuffer).resize(120, 120).toBuffer(),
+    left: Math.floor((PRINT_WIDTH - 120) / 2),
+    top: yOffset + 8,
+  })
+
+  // Build print layout
+  const layoutBuffer = await sharp(collageBuffer)
     .resize(PRINT_WIDTH, PRINT_WIDTH)
-    .extend({ bottom: 150, background: { r: 255, g: 255, b: 255 } })
-    .composite([
-      {
-        input: await sharp(qrBuffer).resize(120, 120).toBuffer(),
-        left: Math.floor((PRINT_WIDTH - 120) / 2),
-        top: PRINT_WIDTH + 15,
-      },
-    ])
+    .extend({ bottom: bottomExtension, background: { r: 255, g: 255, b: 255 } })
+    .composite(overlays)
     .greyscale()
     .raw()
     .toBuffer()
 
-  // Get dimensions of the print layout
-  const printMeta = await sharp(collageBuffer)
-    .resize(PRINT_WIDTH, PRINT_WIDTH)
-    .extend({ bottom: 150, background: { r: 255, g: 255, b: 255 } })
-    .metadata()
-  const printHeight = printMeta.height
-  const printWidth = printMeta.width
+  const totalHeight = PRINT_WIDTH + bottomExtension
 
   // Floyd-Steinberg dithering
   const dithered = floydSteinbergDither(
-    new Uint8Array(qrComposite),
-    printWidth,
-    printHeight,
+    new Uint8Array(layoutBuffer),
+    PRINT_WIDTH,
+    totalHeight,
   )
 
   // Convert back to PNG
   const printBuffer = await sharp(Buffer.from(dithered), {
-    raw: { width: printWidth, height: printHeight, channels: 1 },
+    raw: { width: PRINT_WIDTH, height: totalHeight, channels: 1 },
   })
     .png()
     .toBuffer()

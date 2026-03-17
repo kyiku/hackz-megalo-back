@@ -117,4 +117,24 @@ describe('print-prepare handler', () => {
       expect.any(Object) as Record<string, unknown>,
     )
   })
+
+  it('should include caption in print layout when provided', async () => {
+    const result = await handler({
+      ...baseInput,
+      caption: '楽しい思い出！',
+      sentiment: 'POSITIVE',
+      sentimentScore: 0.95,
+    })
+
+    expect(result.downloadKey).toBe('downloads/test-uuid.png')
+    expect(result.printKey).toBe('print-ready/test-uuid.png')
+    expect(mockPutObject).toHaveBeenCalledTimes(2)
+  })
+
+  it('should work without caption', async () => {
+    const result = await handler(baseInput)
+
+    expect(result.printKey).toBe('print-ready/test-uuid.png')
+    expect(mockPutObject).toHaveBeenCalledTimes(2)
+  })
 })

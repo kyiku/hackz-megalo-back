@@ -87,8 +87,8 @@ export class Pipeline extends Construct {
     })
 
     // -------------------------------------------------------
-    // Phase 3: Parallel(caption-generate, print-prepare)
-    // Both need collageKey from Phase 2
+    // Phase 3: caption-generate (sequential, optional)
+    // Runs before print-prepare so caption can be included in layout
     // -------------------------------------------------------
     const captionGenerateStep = new LambdaInvoke(this, 'CaptionGenerate', {
       lambdaFunction: props.captionGenerateFn,
@@ -108,6 +108,9 @@ export class Pipeline extends Construct {
       { resultPath: '$.captionGenerateError' },
     )
 
+    // -------------------------------------------------------
+    // Phase 4: print-prepare (receives caption from Phase 3)
+    // -------------------------------------------------------
     const printPrepareStep = new LambdaInvoke(this, 'PrintPrepare', {
       lambdaFunction: props.printPrepareFn,
       outputPath: '$.Payload',
@@ -117,17 +120,6 @@ export class Pipeline extends Construct {
       interval: Duration.seconds(2),
       maxAttempts: 2,
       backoffRate: 2.0,
-    })
-
-    const phase3 = new Parallel(this, 'Phase3-CaptionAndPrint')
-      .branch(captionGenerateStep)
-      .branch(printPrepareStep)
-
-    // Merge Phase 3: take print-prepare output (index 1) which has downloadKey + printKey
-    // caption-generate saves its results to DynamoDB internally
-    const mergePhase3 = new Pass(this, 'MergePhase3', {
-      comment: 'Take print-prepare output with downloadKey and printKey',
-      inputPath: '$[1]',
     })
 
     // -------------------------------------------------------
@@ -146,12 +138,13 @@ export class Pipeline extends Construct {
 
     // -------------------------------------------------------
     // Chain all phases
+    // Phase1(face+filter) → collage → caption → print → complete
     // -------------------------------------------------------
     const workflow = Chain.start(phase1)
       .next(mergePhase1)
       .next(collageGenerateStep)
-      .next(phase3)
-      .next(mergePhase3)
+      .next(captionGenerateStep)
+      .next(printPrepareStep)
       .next(pipelineCompleteStep)
 
     this.stateMachine = new StateMachine(this, 'StateMachine', {
