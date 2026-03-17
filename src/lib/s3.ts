@@ -43,7 +43,10 @@ export const getObject = async (key: string): Promise<Buffer> => {
   })
   const response = await client.send(command)
   const bytes = await response.Body?.transformToByteArray()
-  if (!bytes) throw new Error(`Empty body for key: ${key}`)
+  if (!bytes) {
+    console.error('Empty body returned from S3 for key:', key)
+    throw new Error('Empty body returned from S3')
+  }
   return Buffer.from(bytes)
 }
 
