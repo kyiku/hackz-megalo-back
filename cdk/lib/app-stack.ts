@@ -103,11 +103,16 @@ export class AppStack extends cdk.Stack {
       resources: [webSocketApiArn],
     }))
 
-    // face-detection: S3 GetObject, Rekognition
+    // face-detection: S3 GetObject, Rekognition, WebSocket (progress notifications)
     storage.bucket.grantRead(api.faceDetectionFn)
+    storage.connectionsTable.grantReadData(api.faceDetectionFn)
     api.faceDetectionFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['rekognition:DetectFaces'],
       resources: ['*'],
+    }))
+    api.faceDetectionFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['execute-api:ManageConnections'],
+      resources: [webSocketApiArn],
     }))
 
     // filter-apply: S3 read/write, Bedrock, WebSocket (progress notifications)

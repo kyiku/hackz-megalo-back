@@ -1,11 +1,12 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 
-const { mockBedrockSend, mockComprehendSend, mockGetObject, mockUpdateSession } =
+const { mockBedrockSend, mockComprehendSend, mockGetObject, mockUpdateSession, mockSendToSession } =
   vi.hoisted(() => ({
     mockBedrockSend: vi.fn(),
     mockComprehendSend: vi.fn(),
     mockGetObject: vi.fn(),
     mockUpdateSession: vi.fn(),
+    mockSendToSession: vi.fn(),
   }))
 
 vi.mock('@aws-sdk/client-bedrock-runtime', () => ({
@@ -34,6 +35,10 @@ vi.mock('../../lib/dynamodb', () => ({
   updateSession: (...args: unknown[]) => mockUpdateSession(...args) as unknown,
 }))
 
+vi.mock('../../lib/websocket', () => ({
+  sendToSession: (...args: unknown[]) => mockSendToSession(...args) as unknown,
+}))
+
 import { handler } from './handler'
 
 const baseInput = {
@@ -50,6 +55,7 @@ const baseInput = {
 describe('caption-generate handler', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockSendToSession.mockResolvedValue(undefined)
     mockGetObject.mockResolvedValue(Buffer.from([1, 2, 3]))
     mockBedrockSend.mockResolvedValue({
       body: new TextEncoder().encode(
