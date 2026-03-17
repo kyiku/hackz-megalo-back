@@ -53,7 +53,14 @@ function createCommonProps(config: LambdaConfig) {
       minify: true,
       sourceMap: true,
       externalModules: ['@aws-sdk/*'],
-      ...(config.nodeModules ? { nodeModules: [...config.nodeModules] } : {}),
+      ...(config.nodeModules
+        ? {
+            nodeModules: [...config.nodeModules],
+            // Force Docker bundling so native addons (e.g. sharp) are compiled
+            // for linux-arm64 (Lambda Graviton2) instead of the host macOS arch.
+            forceDockerBundling: true,
+          }
+        : {}),
     },
   }
 }
@@ -291,6 +298,7 @@ export class Api extends Construct {
         S3_BUCKET: bucketName,
         CONNECTIONS_TABLE: connectionsTableName,
         WEBSOCKET_URL: websocketUrl,
+        DOWNLOAD_DOMAIN: 'https://main.d3aiwm7kus33pv.amplifyapp.com',
       },
     }))
 
