@@ -88,4 +88,43 @@ describe('stats-update handler', () => {
 
     expect(mockDocClientSend).not.toHaveBeenCalled()
   })
+
+  it('should skip records with invalid status values', async () => {
+    const event: DynamoDBStreamEvent = {
+      Records: [
+        {
+          eventName: 'INSERT',
+          dynamodb: {
+            NewImage: {
+              sessionId: { S: 'test-uuid' },
+              status: { S: 'hacked_column' },
+            },
+          },
+        },
+      ],
+    }
+
+    await handler(event, mockContext, noop)
+
+    expect(mockDocClientSend).not.toHaveBeenCalled()
+  })
+
+  it('should skip records with missing status', async () => {
+    const event: DynamoDBStreamEvent = {
+      Records: [
+        {
+          eventName: 'INSERT',
+          dynamodb: {
+            NewImage: {
+              sessionId: { S: 'test-uuid' },
+            },
+          },
+        },
+      ],
+    }
+
+    await handler(event, mockContext, noop)
+
+    expect(mockDocClientSend).not.toHaveBeenCalled()
+  })
 })

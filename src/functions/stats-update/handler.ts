@@ -8,10 +8,15 @@ export const handler: DynamoDBStreamHandler = async (event) => {
   const tableName = process.env.STATS_TABLE ?? process.env.DYNAMODB_TABLE
   if (!tableName) return
 
+  const VALID_STATUSES = new Set(['uploading', 'processing', 'completed', 'printed', 'failed'])
+
   for (const record of event.Records) {
     if (record.eventName === 'REMOVE') continue
 
-    const status = record.dynamodb?.NewImage?.status?.S ?? 'unknown'
+    const rawStatus = record.dynamodb?.NewImage?.status?.S
+    if (!rawStatus || !VALID_STATUSES.has(rawStatus)) continue
+
+    const status = rawStatus
     const today = new Date().toISOString().slice(0, 10)
 
     await docClient.send(
