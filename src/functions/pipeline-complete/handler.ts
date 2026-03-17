@@ -1,5 +1,6 @@
 import { IoTDataPlaneClient, PublishCommand } from '@aws-sdk/client-iot-data-plane'
 import { updateSession } from '../../lib/dynamodb'
+import { generatePresignedDownloadUrl } from '../../lib/s3'
 import { sendToSession } from '../../lib/websocket'
 import type { PipelineInput } from '../../lib/types'
 
@@ -49,12 +50,13 @@ export const handler = async (
     downloadKey,
   })
 
-  // Notify via WebSocket
+  // Notify via WebSocket with presigned URL
+  const collageImageUrl = await generatePresignedDownloadUrl(downloadKey, 3600)
   await sendToSession(sessionId, {
     type: 'completed',
     data: {
       sessionId,
-      collageImageUrl: collageKey,
+      collageImageUrl,
     },
   })
 
