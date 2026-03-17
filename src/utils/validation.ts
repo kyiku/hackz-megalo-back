@@ -1,18 +1,22 @@
 import { z } from 'zod'
 
+const SIMPLE_FILTERS = ['natural', 'beauty', 'bright', 'mono', 'sepia'] as const
+const AI_FILTERS = ['anime', 'popart', 'watercolor'] as const
+
 export const CreateSessionSchema = z.object({
   filterType: z.enum(['simple', 'ai']),
-  filter: z.enum([
-    'natural',
-    'beauty',
-    'bright',
-    'mono',
-    'sepia',
-    'anime',
-    'popart',
-    'watercolor',
-  ]),
+  filter: z.enum([...SIMPLE_FILTERS, ...AI_FILTERS]),
   photoCount: z.number().int().min(1).max(4).default(4),
+}).superRefine((data, ctx) => {
+  const isSimple = data.filterType === 'simple'
+  const validFilters = isSimple ? SIMPLE_FILTERS : AI_FILTERS
+  if (!(validFilters as readonly string[]).includes(data.filter)) {
+    ctx.addIssue({
+      code: 'custom',
+      message: `filter '${data.filter}' is not valid for filterType '${data.filterType}'`,
+      path: ['filter'],
+    })
+  }
 })
 
 export type CreateSessionInput = z.infer<typeof CreateSessionSchema>

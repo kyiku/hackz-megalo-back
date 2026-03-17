@@ -69,6 +69,36 @@ describe('CreateSessionSchema', () => {
     })
     expect(result.success).toBe(false)
   })
+
+  it('should reject AI filter with simple filterType', () => {
+    const result = CreateSessionSchema.safeParse({
+      filterType: 'simple',
+      filter: 'anime',
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('should reject simple filter with AI filterType', () => {
+    const result = CreateSessionSchema.safeParse({
+      filterType: 'ai',
+      filter: 'beauty',
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('should accept all simple filters with simple filterType', () => {
+    for (const filter of ['natural', 'beauty', 'bright', 'mono', 'sepia']) {
+      const result = CreateSessionSchema.safeParse({ filterType: 'simple', filter })
+      expect(result.success).toBe(true)
+    }
+  })
+
+  it('should accept all AI filters with AI filterType', () => {
+    for (const filter of ['anime', 'popart', 'watercolor']) {
+      const result = CreateSessionSchema.safeParse({ filterType: 'ai', filter })
+      expect(result.success).toBe(true)
+    }
+  })
 })
 
 describe('ProcessSchema', () => {
