@@ -1,5 +1,6 @@
 import * as cdk from 'aws-cdk-lib'
 import * as iam from 'aws-cdk-lib/aws-iam'
+import * as cr from 'aws-cdk-lib/custom-resources'
 import { StartingPosition } from 'aws-cdk-lib/aws-lambda'
 import { DynamoEventSource } from 'aws-cdk-lib/aws-lambda-event-sources'
 import * as appsync from 'aws-cdk-lib/aws-appsync'
@@ -56,6 +57,21 @@ export class AppStack extends cdk.Stack {
       'STATE_MACHINE_ARN',
       pipeline.stateMachine.stateMachineArn,
     )
+
+    // Fetch IoT Data-ATS endpoint dynamically (account-specific subdomain)
+    const iotEndpointResource = new cr.AwsCustomResource(this, 'IotEndpoint', {
+      onCreate: {
+        service: 'Iot',
+        action: 'describeEndpoint',
+        parameters: { endpointType: 'iot:Data-ATS' },
+        physicalResourceId: cr.PhysicalResourceId.fromResponse('endpointAddress'),
+      },
+      policy: cr.AwsCustomResourcePolicy.fromSdkCalls({
+        resources: cr.AwsCustomResourcePolicy.ANY_RESOURCE,
+      }),
+    })
+    const iotEndpointAddress = iotEndpointResource.getResponseField('endpointAddress')
+    api.pipelineCompleteFn.addEnvironment('IOT_ENDPOINT', iotEndpointAddress)
 
     // WebSocket Management API ARN for execute-api permissions
     const webSocketApiArn = cdk.Fn.sub(
@@ -210,9 +226,10 @@ export class AppStack extends cdk.Stack {
       resources: [webSocketApiArn],
     }))
 
-    // pipeline-complete: DynamoDB write, connections read, WebSocket, IoT Core
+    // pipeline-complete: DynamoDB write, connections read, S3 read (presigned URL), WebSocket, IoT Core
     storage.sessionsTable.grantWriteData(api.pipelineCompleteFn)
     storage.connectionsTable.grantReadData(api.pipelineCompleteFn)
+    storage.bucket.grantRead(api.pipelineCompleteFn)
     api.pipelineCompleteFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['execute-api:ManageConnections'],
       resources: [webSocketApiArn],

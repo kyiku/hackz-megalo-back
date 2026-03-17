@@ -298,6 +298,7 @@ export class Api extends Construct {
         S3_BUCKET: bucketName,
         CONNECTIONS_TABLE: connectionsTableName,
         WEBSOCKET_URL: websocketUrl,
+        DOWNLOAD_DOMAIN: 'https://main.d3aiwm7kus33pv.amplifyapp.com',
       },
     }))
 
