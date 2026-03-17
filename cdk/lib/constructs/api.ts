@@ -8,10 +8,12 @@ import {
   RestApi,
 } from 'aws-cdk-lib/aws-apigateway'
 import {
+  Alias,
   Architecture,
   Runtime,
   Tracing,
 } from 'aws-cdk-lib/aws-lambda'
+import type { IFunction } from 'aws-cdk-lib/aws-lambda'
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs'
 import {
   WebSocketApi,
@@ -82,6 +84,11 @@ export class Api extends Construct {
   public readonly collageGenerateFn: NodejsFunction
   public readonly captionGenerateFn: NodejsFunction
   public readonly printPrepareFn: NodejsFunction
+
+  // Pipeline invocation targets (alias with Provisioned Concurrency in prod)
+  public readonly filterApplyTarget: IFunction
+  public readonly collageGenerateTarget: IFunction
+  public readonly printPrepareTarget: IFunction
 
   // Yaji comment Lambda functions
   public readonly yajiCommentFastFn: NodejsFunction
@@ -363,6 +370,15 @@ export class Api extends Construct {
         S3_BUCKET: bucketName,
       },
     }))
+
+    // -------------------------------------------------------
+    // Invocation targets (Provisioned Concurrency disabled:
+    // account concurrent execution quota too low.
+    // Enable after Service Quotas increase request)
+    // -------------------------------------------------------
+    this.filterApplyTarget = this.filterApplyFn
+    this.collageGenerateTarget = this.collageGenerateFn
+    this.printPrepareTarget = this.printPrepareFn
 
     // -------------------------------------------------------
     // WebSocket route integrations
