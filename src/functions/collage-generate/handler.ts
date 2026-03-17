@@ -1,6 +1,7 @@
 import sharp from 'sharp'
 import { getObject, putObject } from '../../lib/s3'
-import type { PipelineInput } from '../../lib/types'
+import { sendToSession } from '../../lib/websocket'
+import type { PipelineInput, ProgressEvent } from '../../lib/types'
 
 interface CollageInput extends PipelineInput {
   readonly filteredImages: readonly string[]
@@ -32,8 +33,18 @@ const cropToSquare = async (buffer: Buffer): Promise<Buffer> => {
     .toBuffer()
 }
 
+const notify = async (sessionId: string, progress: number, message: string): Promise<void> => {
+  const event: ProgressEvent = {
+    type: 'statusUpdate',
+    data: { sessionId, status: 'processing', step: 'collage-generate', progress, message },
+  }
+  await sendToSession(sessionId, event).catch(() => undefined)
+}
+
 export const handler = async (event: CollageInput): Promise<CollageOutput> => {
   const { sessionId, filteredImages } = event
+
+  await notify(sessionId, 40, 'コラージュ生成中...')
 
   const cellBuffers = await Promise.all(
     filteredImages.map(async (key) => {
@@ -74,6 +85,8 @@ export const handler = async (event: CollageInput): Promise<CollageOutput> => {
 
   const collageKey = `collages/${sessionId}.png`
   await putObject(collageKey, collageBuffer)
+
+  await notify(sessionId, 50, 'コラージュ生成完了')
 
   return { ...event, collageKey }
 }

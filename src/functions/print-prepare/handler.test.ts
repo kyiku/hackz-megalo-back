@@ -1,8 +1,9 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 
-const { mockGetObject, mockPutObject } = vi.hoisted(() => ({
+const { mockGetObject, mockPutObject, mockSendToSession } = vi.hoisted(() => ({
   mockGetObject: vi.fn(),
   mockPutObject: vi.fn(),
+  mockSendToSession: vi.fn(),
 }))
 
 const { mockSharp } = vi.hoisted(() => {
@@ -27,6 +28,10 @@ const { mockQRCodeToBuffer } = vi.hoisted(() => ({
 vi.mock('../../lib/s3', () => ({
   getObject: (...args: unknown[]) => mockGetObject(...args) as unknown,
   putObject: (...args: unknown[]) => mockPutObject(...args) as unknown,
+}))
+
+vi.mock('../../lib/websocket', () => ({
+  sendToSession: (...args: unknown[]) => mockSendToSession(...args) as unknown,
 }))
 
 vi.mock('sharp', () => ({ default: mockSharp }))
@@ -56,6 +61,7 @@ describe('print-prepare handler', () => {
     vi.clearAllMocks()
     mockGetObject.mockResolvedValue(Buffer.from([1, 2, 3]))
     mockPutObject.mockResolvedValue(undefined)
+    mockSendToSession.mockResolvedValue(undefined)
     process.env.DOWNLOAD_DOMAIN = 'https://example.com'
   })
 

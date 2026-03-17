@@ -1,7 +1,8 @@
 import sharp from 'sharp'
 import QRCode from 'qrcode'
 import { getObject, putObject } from '../../lib/s3'
-import type { PipelineInput } from '../../lib/types'
+import { sendToSession } from '../../lib/websocket'
+import type { PipelineInput, ProgressEvent } from '../../lib/types'
 
 interface PrintPrepareInput extends PipelineInput {
   readonly filteredImages: readonly string[]
@@ -46,8 +47,18 @@ const floydSteinbergDither = (pixels: Uint8Array, width: number, height: number)
   return output
 }
 
+const notify = async (sessionId: string, progress: number, message: string): Promise<void> => {
+  const event: ProgressEvent = {
+    type: 'statusUpdate',
+    data: { sessionId, status: 'processing', step: 'print-prepare', progress, message },
+  }
+  await sendToSession(sessionId, event).catch(() => undefined)
+}
+
 export const handler = async (event: PrintPrepareInput): Promise<PrintPrepareOutput> => {
   const { sessionId, collageKey } = event
+
+  await notify(sessionId, 60, '印刷データ準備中...')
 
   const collageBuffer = await getObject(collageKey)
 
@@ -102,6 +113,8 @@ export const handler = async (event: PrintPrepareInput): Promise<PrintPrepareOut
 
   const printKey = `print-ready/${sessionId}.png`
   await putObject(printKey, printBuffer)
+
+  await notify(sessionId, 90, '印刷データ準備完了')
 
   return { ...event, downloadKey, printKey }
 }
