@@ -34,6 +34,7 @@ export class AppStack extends cdk.Stack {
       captionGenerateFn: api.captionGenerateFn,
       printPrepareFn: api.printPrepareTarget,
       pipelineCompleteFn: api.pipelineCompleteFn,
+      pipelineErrorFn: api.pipelineErrorFn,
     })
 
     const realtime = new Realtime(this, 'Realtime', { stage })
@@ -217,6 +218,14 @@ export class AppStack extends cdk.Stack {
     api.pipelineCompleteFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['iot:Publish'],
       resources: ['*'],
+    }))
+
+    // pipeline-error: DynamoDB write (sessions), connections read, WebSocket
+    storage.sessionsTable.grantWriteData(api.pipelineErrorFn)
+    storage.connectionsTable.grantReadData(api.pipelineErrorFn)
+    api.pipelineErrorFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['execute-api:ManageConnections'],
+      resources: [webSocketApiArn],
     }))
 
     // yaji-comment-fast: S3 GetObject, DynamoDB Query connections, ManageConnections, Rekognition
