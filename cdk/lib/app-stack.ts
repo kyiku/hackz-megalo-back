@@ -1,11 +1,14 @@
 import * as cdk from 'aws-cdk-lib'
 import * as iam from 'aws-cdk-lib/aws-iam'
+import { StartingPosition } from 'aws-cdk-lib/aws-lambda'
+import { DynamoEventSource } from 'aws-cdk-lib/aws-lambda-event-sources'
 import type { Construct } from 'constructs'
 
 import { Storage } from './constructs/storage'
 import { Api } from './constructs/api'
 import { Pipeline } from './constructs/pipeline'
 import { Realtime } from './constructs/realtime'
+import { Monitoring } from './constructs/monitoring'
 
 export class AppStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -205,8 +208,47 @@ export class AppStack extends cdk.Stack {
       resources: ['*'],
     }))
 
-    // stats-update: DynamoDB UpdateItem on sessions
+    // stats-update: DynamoDB Streams trigger + write on sessions
     storage.sessionsTable.grantWriteData(api.statsUpdateFn)
+    storage.sessionsTable.grantStreamRead(api.statsUpdateFn)
+    api.statsUpdateFn.addEventSource(new DynamoEventSource(storage.sessionsTable, {
+      startingPosition: StartingPosition.TRIM_HORIZON,
+      batchSize: 10,
+      retryAttempts: 2,
+    }))
+
+    // countdown-audio: S3 write, Polly
+    storage.bucket.grantWrite(api.countdownAudioFn)
+    api.countdownAudioFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['polly:SynthesizeSpeech'],
+      resources: ['*'],
+    }))
+
+    // voice-command: S3 read, Transcribe
+    storage.bucket.grantRead(api.voiceCommandFn)
+    api.voiceCommandFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: [
+        'transcribe:StartTranscriptionJob',
+        'transcribe:GetTranscriptionJob',
+      ],
+      resources: ['*'],
+    }))
+
+    // -------------------------------------------------------
+    // Monitoring (CloudWatch Dashboard)
+    // -------------------------------------------------------
+    new Monitoring(this, 'Monitoring', {
+      stage,
+      restApi: api.restApi,
+      stateMachine: pipeline.stateMachine,
+      lambdaFunctions: {
+        'session-create': api.sessionCreateFn,
+        'filter-apply': api.filterApplyFn,
+        'collage-generate': api.collageGenerateFn,
+        'print-prepare': api.printPrepareFn,
+        'pipeline-complete': api.pipelineCompleteFn,
+      },
+    })
 
     // -------------------------------------------------------
     // CfnOutputs
