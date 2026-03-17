@@ -53,7 +53,7 @@ const floydSteinbergDither = (pixels: Uint8Array, width: number, height: number)
 const notify = async (sessionId: string, progress: number, message: string): Promise<void> => {
   const event: ProgressEvent = {
     type: 'statusUpdate',
-    data: { sessionId, status: 'processing', step: 'print-prepare', progress, message },
+    data: { sessionId, status: 'processing', step: 'dither', progress, message },
   }
   await sendToSession(sessionId, event).catch(() => undefined)
 }

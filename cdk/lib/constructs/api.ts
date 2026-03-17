@@ -90,6 +90,9 @@ export class Api extends Construct {
   // Pipeline complete Lambda function
   public readonly pipelineCompleteFn: NodejsFunction
 
+  // Pipeline error Lambda function
+  public readonly pipelineErrorFn: NodejsFunction
+
   // Stats Lambda function
   public readonly statsUpdateFn: NodejsFunction
 
@@ -289,6 +292,16 @@ export class Api extends Construct {
       },
     }))
 
+    this.pipelineErrorFn = new NodejsFunction(this, 'PipelineErrorFn', createCommonProps({
+      name: 'pipeline-error',
+      timeout: Duration.seconds(10),
+      environment: {
+        DYNAMODB_TABLE: sessionsTableName,
+        CONNECTIONS_TABLE: connectionsTableName,
+        WEBSOCKET_URL: websocketUrl,
+      },
+    }))
+
     // -------------------------------------------------------
     // Yaji comment Lambda functions
     // -------------------------------------------------------
@@ -364,14 +377,14 @@ export class Api extends Construct {
       },
     })
 
-    // GET /health - Mock Integration
+    // GET /health - Mock Integration with timestamp
     const healthResource = this.restApi.root.addResource('health')
     healthResource.addMethod('GET', new MockIntegration({
       integrationResponses: [
         {
           statusCode: '200',
           responseTemplates: {
-            'application/json': '{"status":"ok"}',
+            'application/json': '{"status":"ok","timestamp":"$context.requestTime"}',
           },
         },
       ],
