@@ -15,21 +15,21 @@ const CANVAS_SIZE = 576
 const PADDING = 10
 const GAP = 6
 
-const CELL_SIZE = Math.floor((CANVAS_SIZE - PADDING * 2 - GAP) / 2)
+const CELL_SIZE_2x2 = Math.floor((CANVAS_SIZE - PADDING * 2 - GAP) / 2)
 
-const cropToSquare = async (buffer: Buffer): Promise<Buffer> => {
+const cropToSquare = async (buffer: Buffer, cellSize: number): Promise<Buffer> => {
   const image = sharp(buffer)
-  const { width, height } = await image.metadata()
-  const size = Math.min(width, height)
+  const { width: w, height: h } = await image.metadata()
+  const size = Math.min(w, h)
 
   return image
     .extract({
-      left: Math.floor((width - size) / 2),
-      top: Math.floor((height - size) / 2),
+      left: Math.floor((w - size) / 2),
+      top: Math.floor((h - size) / 2),
       width: size,
       height: size,
     })
-    .resize(CELL_SIZE, CELL_SIZE)
+    .resize(cellSize, cellSize)
     .toBuffer()
 }
 
@@ -41,36 +41,63 @@ const notify = async (sessionId: string, progress: number, message: string): Pro
   await sendToSession(sessionId, event).catch(() => undefined)
 }
 
+/** Get grid positions for 1-4 images. */
+const getLayout = (count: number): { cellSize: number; positions: { left: number; top: number }[] } => {
+  if (count === 1) {
+    const cellSize = CANVAS_SIZE - PADDING * 2
+    return { cellSize, positions: [{ left: PADDING, top: PADDING }] }
+  }
+  if (count === 2) {
+    return {
+      cellSize: CELL_SIZE_2x2,
+      positions: [
+        { left: PADDING, top: Math.floor((CANVAS_SIZE - CELL_SIZE_2x2) / 2) },
+        { left: PADDING + CELL_SIZE_2x2 + GAP, top: Math.floor((CANVAS_SIZE - CELL_SIZE_2x2) / 2) },
+      ],
+    }
+  }
+  if (count === 3) {
+    return {
+      cellSize: CELL_SIZE_2x2,
+      positions: [
+        { left: Math.floor((CANVAS_SIZE - CELL_SIZE_2x2) / 2), top: PADDING },
+        { left: PADDING, top: PADDING + CELL_SIZE_2x2 + GAP },
+        { left: PADDING + CELL_SIZE_2x2 + GAP, top: PADDING + CELL_SIZE_2x2 + GAP },
+      ],
+    }
+  }
+  return {
+    cellSize: CELL_SIZE_2x2,
+    positions: [
+      { left: PADDING, top: PADDING },
+      { left: PADDING + CELL_SIZE_2x2 + GAP, top: PADDING },
+      { left: PADDING, top: PADDING + CELL_SIZE_2x2 + GAP },
+      { left: PADDING + CELL_SIZE_2x2 + GAP, top: PADDING + CELL_SIZE_2x2 + GAP },
+    ],
+  }
+}
+
 export const handler = async (event: CollageInput): Promise<CollageOutput> => {
   const { sessionId, filteredImages } = event
 
   await notify(sessionId, 40, 'コラージュ生成中...')
 
+  const { cellSize, positions } = getLayout(filteredImages.length)
+
   const cellBuffers = await Promise.all(
     filteredImages.map(async (key) => {
       const buffer = await getObject(key)
-      return cropToSquare(buffer)
+      return cropToSquare(buffer, cellSize)
     }),
   )
 
-  const positions: readonly [
-    { left: number; top: number },
-    { left: number; top: number },
-    { left: number; top: number },
-    { left: number; top: number },
-  ] = [
-    { left: PADDING, top: PADDING },
-    { left: PADDING + CELL_SIZE + GAP, top: PADDING },
-    { left: PADDING, top: PADDING + CELL_SIZE + GAP },
-    { left: PADDING + CELL_SIZE + GAP, top: PADDING + CELL_SIZE + GAP },
-  ]
-
-  const compositeInputs = [
-    { input: cellBuffers[0], left: positions[0].left, top: positions[0].top },
-    { input: cellBuffers[1], left: positions[1].left, top: positions[1].top },
-    { input: cellBuffers[2], left: positions[2].left, top: positions[2].top },
-    { input: cellBuffers[3], left: positions[3].left, top: positions[3].top },
-  ]
+  const compositeInputs = cellBuffers.map((input, i) => ({
+    input,
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    left: positions[i]!.left,
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    top: positions[i]!.top,
+  }))
 
   const canvas = sharp({
     create: {
