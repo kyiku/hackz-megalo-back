@@ -18,6 +18,7 @@ import type { PipelineInput } from '../../lib/types'
 
 const baseInput: PipelineInput = {
   sessionId: 'test-uuid',
+  createdAt: '2026-03-16T14:30:00Z',
   filterType: 'simple',
   filter: 'beauty',
   images: ['originals/test-uuid/1.jpg', 'originals/test-uuid/2.jpg'],

@@ -1,8 +1,9 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 
-const { mockGetObject, mockPutObject } = vi.hoisted(() => ({
+const { mockGetObject, mockPutObject, mockSendToSession } = vi.hoisted(() => ({
   mockGetObject: vi.fn(),
   mockPutObject: vi.fn(),
+  mockSendToSession: vi.fn(),
 }))
 
 const { mockSharp } = vi.hoisted(() => {
@@ -29,6 +30,10 @@ vi.mock('../../lib/s3', () => ({
   putObject: (...args: unknown[]) => mockPutObject(...args) as unknown,
 }))
 
+vi.mock('../../lib/websocket', () => ({
+  sendToSession: (...args: unknown[]) => mockSendToSession(...args) as unknown,
+}))
+
 vi.mock('sharp', () => ({ default: mockSharp }))
 
 vi.mock('qrcode', () => ({
@@ -42,6 +47,7 @@ import { handler } from './handler'
 
 const baseInput = {
   sessionId: 'test-uuid',
+  createdAt: '2026-03-16T14:30:00Z',
   filterType: 'simple' as const,
   filter: 'beauty' as const,
   images: ['originals/test-uuid/1.jpg'],
@@ -55,6 +61,7 @@ describe('print-prepare handler', () => {
     vi.clearAllMocks()
     mockGetObject.mockResolvedValue(Buffer.from([1, 2, 3]))
     mockPutObject.mockResolvedValue(undefined)
+    mockSendToSession.mockResolvedValue(undefined)
     process.env.DOWNLOAD_DOMAIN = 'https://example.com'
   })
 
@@ -109,5 +116,25 @@ describe('print-prepare handler', () => {
       expect.stringContaining('/download/test-uuid') as string,
       expect.any(Object) as Record<string, unknown>,
     )
+  })
+
+  it('should include caption in print layout when provided', async () => {
+    const result = await handler({
+      ...baseInput,
+      caption: '楽しい思い出！',
+      sentiment: 'POSITIVE',
+      sentimentScore: 0.95,
+    })
+
+    expect(result.downloadKey).toBe('downloads/test-uuid.png')
+    expect(result.printKey).toBe('print-ready/test-uuid.png')
+    expect(mockPutObject).toHaveBeenCalledTimes(2)
+  })
+
+  it('should work without caption', async () => {
+    const result = await handler(baseInput)
+
+    expect(result.printKey).toBe('print-ready/test-uuid.png')
+    expect(mockPutObject).toHaveBeenCalledTimes(2)
   })
 })

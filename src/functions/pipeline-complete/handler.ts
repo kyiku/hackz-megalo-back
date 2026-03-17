@@ -6,7 +6,6 @@ import type { PipelineInput } from '../../lib/types'
 const iot = new IoTDataPlaneClient({})
 
 interface PipelineCompleteInput extends PipelineInput {
-  readonly createdAt: string
   readonly filteredImages: readonly string[]
   readonly collageKey: string
   readonly downloadKey: string

@@ -70,4 +70,22 @@ describe('stats-update handler', () => {
 
     expect(mockDocClientSend).not.toHaveBeenCalled()
   })
+
+  it('should fallback to DYNAMODB_TABLE when STATS_TABLE is not set', async () => {
+    delete process.env.STATS_TABLE
+    process.env.DYNAMODB_TABLE = 'test-sessions'
+
+    await handler(createStreamEvent('INSERT'), mockContext, noop)
+
+    expect(mockDocClientSend).toHaveBeenCalledOnce()
+  })
+
+  it('should skip when neither STATS_TABLE nor DYNAMODB_TABLE is set', async () => {
+    delete process.env.STATS_TABLE
+    delete process.env.DYNAMODB_TABLE
+
+    await handler(createStreamEvent('INSERT'), mockContext, noop)
+
+    expect(mockDocClientSend).not.toHaveBeenCalled()
+  })
 })
