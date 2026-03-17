@@ -30,7 +30,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       createdAt: session.createdAt,
     })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Internal server error'
-    return error(message, 500)
+    console.error('session-get failed:', err)
+    return error('Internal server error', 500)
   }
 }
