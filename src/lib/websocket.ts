@@ -13,8 +13,12 @@ const getEndpoint = (): string => {
   return url.replace('wss://', 'https://')
 }
 
-const getClient = (): ApiGatewayManagementApiClient =>
-  new ApiGatewayManagementApiClient({ endpoint: getEndpoint() })
+let cachedClient: ApiGatewayManagementApiClient | undefined
+
+const getClient = (): ApiGatewayManagementApiClient => {
+  cachedClient ??= new ApiGatewayManagementApiClient({ endpoint: getEndpoint() })
+  return cachedClient
+}
 
 /** Send a JSON payload to a specific connection. */
 export const sendToConnection = async (
