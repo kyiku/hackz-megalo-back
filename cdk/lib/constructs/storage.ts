@@ -6,6 +6,7 @@ import {
 import {
   AttributeType,
   BillingMode,
+  StreamViewType,
   Table,
 } from 'aws-cdk-lib/aws-dynamodb'
 import {
@@ -58,6 +59,7 @@ export class Storage extends Construct {
       sortKey: { name: 'createdAt', type: AttributeType.STRING },
       billingMode: BillingMode.PAY_PER_REQUEST,
       timeToLiveAttribute: 'ttl',
+      stream: StreamViewType.NEW_AND_OLD_IMAGES,
       removalPolicy: RemovalPolicy.DESTROY,
     })
 

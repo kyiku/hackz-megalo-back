@@ -103,6 +103,12 @@ export class Api extends Construct {
   // Stats Lambda function
   public readonly statsUpdateFn: NodejsFunction
 
+  // Countdown audio Lambda function
+  public readonly countdownAudioFn: NodejsFunction
+
+  // Voice command Lambda function
+  public readonly voiceCommandFn: NodejsFunction
+
   constructor(scope: Construct, id: string, props: ApiProps) {
     super(scope, id)
 
@@ -340,6 +346,28 @@ export class Api extends Construct {
       timeout: Duration.seconds(10),
       environment: {
         DYNAMODB_TABLE: sessionsTableName,
+      },
+    }))
+
+    // -------------------------------------------------------
+    // Countdown audio Lambda function (Polly)
+    // -------------------------------------------------------
+    this.countdownAudioFn = new NodejsFunction(this, 'CountdownAudioFn', createCommonProps({
+      name: 'countdown-audio',
+      timeout: Duration.seconds(30),
+      environment: {
+        S3_BUCKET: bucketName,
+      },
+    }))
+
+    // -------------------------------------------------------
+    // Voice command Lambda function (Transcribe)
+    // -------------------------------------------------------
+    this.voiceCommandFn = new NodejsFunction(this, 'VoiceCommandFn', createCommonProps({
+      name: 'voice-command',
+      timeout: Duration.seconds(30),
+      environment: {
+        S3_BUCKET: bucketName,
       },
     }))
 
