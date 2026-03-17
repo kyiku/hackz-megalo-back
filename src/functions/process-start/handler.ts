@@ -10,12 +10,14 @@ export const handler: APIGatewayProxyHandler = async (event) => {
   try {
     const stateMachineArn = process.env.STATE_MACHINE_ARN
     if (!stateMachineArn) {
-      return error('STATE_MACHINE_ARN is not set', 500)
+      console.error('Missing required configuration: STATE_MACHINE_ARN')
+      return error('Service configuration error', 500)
     }
 
     const bucket = process.env.S3_BUCKET
     if (!bucket) {
-      return error('S3_BUCKET is not set', 500)
+      console.error('Missing required configuration: S3_BUCKET')
+      return error('Service configuration error', 500)
     }
 
     const sessionId = event.pathParameters?.sessionId
@@ -57,7 +59,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
     return success({ sessionId, status: 'processing' }, 202)
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Internal server error'
-    return error(message, 500)
+    console.error('process-start failed:', err)
+    return error('Internal server error', 500)
   }
 }

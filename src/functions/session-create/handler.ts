@@ -12,7 +12,8 @@ export const handler: APIGatewayProxyHandler = async (event) => {
   try {
     const websocketUrl = process.env.WEBSOCKET_URL
     if (!websocketUrl) {
-      return error('WEBSOCKET_URL is not set', 500)
+      console.error('Missing required configuration: WEBSOCKET_URL')
+      return error('Service configuration error', 500)
     }
 
     const parsed = CreateSessionSchema.safeParse(
@@ -49,7 +50,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
     return success({ sessionId, uploadUrls, websocketUrl }, 201)
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Internal server error'
-    return error(message, 500)
+    console.error('session-create failed:', err)
+    return error('Internal server error', 500)
   }
 }
