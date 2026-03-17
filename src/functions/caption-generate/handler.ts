@@ -8,7 +8,6 @@ const bedrock = new BedrockRuntimeClient({})
 const comprehend = new ComprehendClient({})
 
 interface CaptionInput extends PipelineInput {
-  readonly createdAt: string
   readonly filteredImages: readonly string[]
   readonly collageKey: string
 }

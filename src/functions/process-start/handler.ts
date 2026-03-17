@@ -41,6 +41,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
     const input: PipelineInput = {
       sessionId,
+      createdAt: session.createdAt,
       filterType: session.filterType,
       filter: session.filter,
       images,

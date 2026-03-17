@@ -99,6 +99,7 @@ describe('types', () => {
   it('should allow creating a PipelineInput', () => {
     const input: PipelineInput = {
       sessionId: 'test-id',
+      createdAt: '2026-03-16T14:30:00Z',
       filterType: 'simple',
       filter: 'mono',
       images: ['originals/test-id/1.jpg', 'originals/test-id/2.jpg'],
