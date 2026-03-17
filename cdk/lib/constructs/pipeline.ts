@@ -19,6 +19,7 @@ export interface PipelineProps {
   readonly captionGenerateFn: IFunction
   readonly printPrepareFn: IFunction
   readonly pipelineCompleteFn: IFunction
+  readonly pipelineErrorFn: IFunction
 }
 
 
@@ -149,22 +150,34 @@ export class Pipeline extends Construct {
     })
 
     // -------------------------------------------------------
-    // Chain all phases
+    // Error handler: update status to 'failed' + send WebSocket error event
+    // -------------------------------------------------------
+    const pipelineErrorStep = new LambdaInvoke(this, 'PipelineError', {
+      lambdaFunction: props.pipelineErrorFn,
+      outputPath: '$.Payload',
+    })
+
+    // -------------------------------------------------------
+    // Chain all phases, wrapped in Parallel for global catch
     // Phase1(face+filter) → merge → collage → caption → print → complete
     // -------------------------------------------------------
-    const workflow = Chain.start(phase1)
+    const mainPipeline = Chain.start(phase1)
       .next(mergePhase1)
       .next(collageGenerateStep)
       .next(captionGenerateStep)
       .next(printPrepareStep)
       .next(pipelineCompleteStep)
 
+    const pipelineWithCatch = new Parallel(this, 'PipelineWithCatch')
+      .branch(mainPipeline)
+      .addCatch(pipelineErrorStep, { resultPath: '$.pipelineError' })
+
     this.stateMachine = new StateMachine(this, 'StateMachine', {
       stateMachineName: `receipt-purikura-pipeline-${stage}`,
       stateMachineType: StateMachineType.EXPRESS,
       tracingEnabled: true,
       timeout: Duration.minutes(5),
-      definitionBody: DefinitionBody.fromChainable(workflow),
+      definitionBody: DefinitionBody.fromChainable(pipelineWithCatch),
     })
   }
 }
