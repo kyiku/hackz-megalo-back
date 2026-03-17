@@ -36,7 +36,7 @@ export const handler = async (event: YajiInput): Promise<YajiInput> => {
   const faces = response.FaceDetails ?? []
   if (faces.length === 0) return event
 
-  const topEmotion = faces[0]?.Emotions?.sort(
+  const topEmotion = [...(faces[0]?.Emotions ?? [])].sort(
     (a, b) => (b.Confidence ?? 0) - (a.Confidence ?? 0),
   )[0]
 
