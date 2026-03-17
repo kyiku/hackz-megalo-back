@@ -1,5 +1,8 @@
 import * as cdk from 'aws-cdk-lib'
 import * as iam from 'aws-cdk-lib/aws-iam'
+import { StartingPosition } from 'aws-cdk-lib/aws-lambda'
+import { DynamoEventSource } from 'aws-cdk-lib/aws-lambda-event-sources'
+import * as appsync from 'aws-cdk-lib/aws-appsync'
 import * as events from 'aws-cdk-lib/aws-events'
 import * as targets from 'aws-cdk-lib/aws-events-targets'
 import type { Construct } from 'constructs'
@@ -10,6 +13,7 @@ import { Pipeline } from './constructs/pipeline'
 import { Realtime } from './constructs/realtime'
 import { Waf } from './constructs/waf'
 import { Monitoring } from './constructs/monitoring'
+import { AppSyncApi } from './constructs/appsync'
 import { Cdn } from './constructs/cdn'
 
 export class AppStack extends cdk.Stack {
@@ -38,6 +42,16 @@ export class AppStack extends cdk.Stack {
     })
 
     const realtime = new Realtime(this, 'Realtime', { stage })
+
+    const appSyncApi = new AppSyncApi(this, 'AppSync', {
+      stage,
+      sessionsTable: storage.sessionsTable,
+    })
+
+    // Set environment variables after constructs are created
+    api.statsUpdateFn.addEnvironment('APPSYNC_URL', appSyncApi.api.graphqlUrl)
+    api.statsUpdateFn.addEnvironment('APPSYNC_API_KEY', appSyncApi.api.apiKey ?? '')
+    appSyncApi.api.grant(api.statsUpdateFn, appsync.IamResource.all(), 'appsync:GraphQL')
 
     // Set STATE_MACHINE_ARN on process-start after pipeline is created
     api.processStartFn.addEnvironment(
@@ -252,8 +266,31 @@ export class AppStack extends cdk.Stack {
       resources: ['*'],
     }))
 
-    // stats-update: DynamoDB UpdateItem on sessions
+    // stats-update: DynamoDB Streams trigger + write on sessions
     storage.sessionsTable.grantWriteData(api.statsUpdateFn)
+    storage.sessionsTable.grantStreamRead(api.statsUpdateFn)
+    api.statsUpdateFn.addEventSource(new DynamoEventSource(storage.sessionsTable, {
+      startingPosition: StartingPosition.TRIM_HORIZON,
+      batchSize: 10,
+      retryAttempts: 2,
+    }))
+
+    // countdown-audio: S3 write, Polly
+    storage.bucket.grantWrite(api.countdownAudioFn)
+    api.countdownAudioFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['polly:SynthesizeSpeech'],
+      resources: ['*'],
+    }))
+
+    // voice-command: S3 read, Transcribe
+    storage.bucket.grantRead(api.voiceCommandFn)
+    api.voiceCommandFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: [
+        'transcribe:StartTranscriptionJob',
+        'transcribe:GetTranscriptionJob',
+      ],
+      resources: ['*'],
+    }))
 
     // -------------------------------------------------------
     // CfnOutputs
@@ -280,6 +317,10 @@ export class AppStack extends cdk.Stack {
 
     new cdk.CfnOutput(this, 'AlarmTopicArn', {
       value: realtime.alarmTopic.topicArn,
+    })
+
+    new cdk.CfnOutput(this, 'AppSyncUrl', {
+      value: appSyncApi.api.graphqlUrl,
     })
   }
 }
