@@ -83,4 +83,39 @@ describe('collage-generate handler', () => {
     // Each filtered image gets resized
     expect(mockSharpInstance.resize).toHaveBeenCalled()
   })
+
+  it('should handle 1 image', async () => {
+    const result = await handler({
+      ...baseInput,
+      filteredImages: ['filtered/test-uuid/1.png'],
+    })
+
+    expect(mockGetObject).toHaveBeenCalledTimes(1)
+    expect(mockSharpInstance.composite).toHaveBeenCalledOnce()
+    expect(result.collageKey).toBe('collages/test-uuid.png')
+  })
+
+  it('should handle 2 images', async () => {
+    const result = await handler({
+      ...baseInput,
+      filteredImages: ['filtered/test-uuid/1.png', 'filtered/test-uuid/2.png'],
+    })
+
+    expect(mockGetObject).toHaveBeenCalledTimes(2)
+    expect(result.collageKey).toBe('collages/test-uuid.png')
+  })
+
+  it('should handle 3 images', async () => {
+    const result = await handler({
+      ...baseInput,
+      filteredImages: [
+        'filtered/test-uuid/1.png',
+        'filtered/test-uuid/2.png',
+        'filtered/test-uuid/3.png',
+      ],
+    })
+
+    expect(mockGetObject).toHaveBeenCalledTimes(3)
+    expect(result.collageKey).toBe('collages/test-uuid.png')
+  })
 })
