@@ -1,8 +1,9 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 
-const { mockGetObject, mockPutObject } = vi.hoisted(() => ({
+const { mockGetObject, mockPutObject, mockSendToSession } = vi.hoisted(() => ({
   mockGetObject: vi.fn(),
   mockPutObject: vi.fn(),
+  mockSendToSession: vi.fn(),
 }))
 
 const { mockSharp, mockSharpInstance } = vi.hoisted(() => {
@@ -22,12 +23,17 @@ vi.mock('../../lib/s3', () => ({
   putObject: (...args: unknown[]) => mockPutObject(...args) as unknown,
 }))
 
+vi.mock('../../lib/websocket', () => ({
+  sendToSession: (...args: unknown[]) => mockSendToSession(...args) as unknown,
+}))
+
 vi.mock('sharp', () => ({ default: mockSharp }))
 
 import { handler } from './handler'
 
 const baseInput = {
   sessionId: 'test-uuid',
+  createdAt: '2026-03-16T14:30:00Z',
   filterType: 'simple' as const,
   filter: 'beauty' as const,
   images: ['originals/test-uuid/1.jpg', 'originals/test-uuid/2.jpg'],
@@ -45,6 +51,7 @@ describe('collage-generate handler', () => {
     vi.clearAllMocks()
     mockGetObject.mockResolvedValue(Buffer.from([1, 2, 3]))
     mockPutObject.mockResolvedValue(undefined)
+    mockSendToSession.mockResolvedValue(undefined)
   })
 
   it('should generate collage and save to S3', async () => {

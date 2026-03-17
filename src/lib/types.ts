@@ -79,6 +79,7 @@ export interface YajiComment {
 /** Step Functions pipeline input */
 export interface PipelineInput {
   readonly sessionId: string
+  readonly createdAt: string
   readonly filterType: FilterType
   readonly filter: Filter
   readonly images: readonly string[]

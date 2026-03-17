@@ -1,6 +1,7 @@
 import sharp from 'sharp'
 import { getObject, putObject } from '../../lib/s3'
-import type { PipelineInput } from '../../lib/types'
+import { sendToSession } from '../../lib/websocket'
+import type { PipelineInput, ProgressEvent } from '../../lib/types'
 
 interface CollageInput extends PipelineInput {
   readonly filteredImages: readonly string[]
@@ -30,6 +31,14 @@ const cropToSquare = async (buffer: Buffer, cellSize: number): Promise<Buffer> =
     })
     .resize(cellSize, cellSize)
     .toBuffer()
+}
+
+const notify = async (sessionId: string, progress: number, message: string): Promise<void> => {
+  const event: ProgressEvent = {
+    type: 'statusUpdate',
+    data: { sessionId, status: 'processing', step: 'collage-generate', progress, message },
+  }
+  await sendToSession(sessionId, event).catch(() => undefined)
 }
 
 /** Get grid positions for 1-4 images. */
@@ -71,6 +80,8 @@ const getLayout = (count: number): { cellSize: number; positions: { left: number
 export const handler = async (event: CollageInput): Promise<CollageOutput> => {
   const { sessionId, filteredImages } = event
 
+  await notify(sessionId, 40, 'コラージュ生成中...')
+
   const { cellSize, positions } = getLayout(filteredImages.length)
 
   const cellBuffers = await Promise.all(
@@ -101,6 +112,8 @@ export const handler = async (event: CollageInput): Promise<CollageOutput> => {
 
   const collageKey = `collages/${sessionId}.png`
   await putObject(collageKey, collageBuffer)
+
+  await notify(sessionId, 50, 'コラージュ生成完了')
 
   return { ...event, collageKey }
 }

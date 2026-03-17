@@ -1,7 +1,8 @@
 import sharp from 'sharp'
 import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime'
 import { getObject, putObject } from '../../lib/s3'
-import type { PipelineInput, Filter, AiFilter } from '../../lib/types'
+import { sendToSession } from '../../lib/websocket'
+import type { PipelineInput, Filter, AiFilter, ProgressEvent } from '../../lib/types'
 
 interface FilterApplyOutput extends PipelineInput {
   readonly filteredImages: readonly string[]
@@ -24,6 +25,14 @@ const applySimpleFilter = (pipeline: sharp.Sharp, filter: Filter): sharp.Sharp =
     default:
       return pipeline
   }
+}
+
+const notify = async (sessionId: string, progress: number, message: string): Promise<void> => {
+  const event: ProgressEvent = {
+    type: 'statusUpdate',
+    data: { sessionId, status: 'processing', step: 'filter-apply', progress, message },
+  }
+  await sendToSession(sessionId, event).catch(() => undefined)
 }
 
 /** Map AI filter names to Stability AI style_preset values. */
@@ -79,6 +88,8 @@ const isAiFilter = (filter: Filter): filter is AiFilter =>
 export const handler = async (event: PipelineInput): Promise<FilterApplyOutput> => {
   const { sessionId, filter, filterType, images } = event
 
+  await notify(sessionId, 10, 'フィルター適用中...')
+
   const filteredImages = await Promise.all(
     images.map(async (imageKey, i) => {
       const imageBuffer = await getObject(imageKey)
@@ -96,6 +107,8 @@ export const handler = async (event: PipelineInput): Promise<FilterApplyOutput> 
       return outputKey
     }),
   )
+
+  await notify(sessionId, 30, 'フィルター適用完了')
 
   return { ...event, filteredImages }
 }
