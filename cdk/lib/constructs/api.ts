@@ -132,6 +132,7 @@ export class Api extends Construct {
       timeout: Duration.seconds(10),
       environment: {
         DYNAMODB_TABLE: sessionsTableName,
+        S3_BUCKET: bucketName,
       },
     }))
 
