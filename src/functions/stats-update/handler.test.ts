@@ -16,6 +16,9 @@ vi.mock('@aws-sdk/lib-dynamodb', () => ({
   UpdateCommand: class {
     constructor(public input: unknown) {}
   },
+  GetCommand: class {
+    constructor(public input: unknown) {}
+  },
 }))
 
 import { handler } from './handler'
@@ -50,13 +53,14 @@ describe('stats-update handler', () => {
   it('should increment counter on INSERT', async () => {
     await handler(createStreamEvent('INSERT'), mockContext, noop)
 
-    expect(mockDocClientSend).toHaveBeenCalledOnce()
+    // UpdateCommand + GetCommand (for AppSync publish)
+    expect(mockDocClientSend).toHaveBeenCalled()
   })
 
   it('should update counter on MODIFY', async () => {
     await handler(createStreamEvent('MODIFY'), mockContext, noop)
 
-    expect(mockDocClientSend).toHaveBeenCalledOnce()
+    expect(mockDocClientSend).toHaveBeenCalled()
   })
 
   it('should skip REMOVE events', async () => {
@@ -77,7 +81,7 @@ describe('stats-update handler', () => {
 
     await handler(createStreamEvent('INSERT'), mockContext, noop)
 
-    expect(mockDocClientSend).toHaveBeenCalledOnce()
+    expect(mockDocClientSend).toHaveBeenCalled()
   })
 
   it('should skip when neither STATS_TABLE nor DYNAMODB_TABLE is set', async () => {
@@ -107,6 +111,44 @@ describe('stats-update handler', () => {
     await handler(event, mockContext, noop)
 
     expect(mockDocClientSend).not.toHaveBeenCalled()
+  })
+
+  it('should publish stats to AppSync when APPSYNC_URL is set', async () => {
+    process.env.APPSYNC_URL = 'https://appsync.example.com/graphql'
+    process.env.APPSYNC_API_KEY = 'test-api-key'
+    mockDocClientSend
+      .mockResolvedValueOnce(undefined) // UpdateCommand
+      .mockResolvedValueOnce({ Item: { totalSessions: 5, completed: 3, printed: 1, failed: 1 } }) // GetCommand
+
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true })
+    vi.stubGlobal('fetch', mockFetch)
+
+    await handler(createStreamEvent('INSERT'), mockContext, noop)
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://appsync.example.com/graphql',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'x-api-key': 'test-api-key',
+        }) as Record<string, string>,
+      }),
+    )
+
+    delete process.env.APPSYNC_URL
+    delete process.env.APPSYNC_API_KEY
+    vi.unstubAllGlobals()
+  })
+
+  it('should skip AppSync publish when APPSYNC_URL is not set', async () => {
+    delete process.env.APPSYNC_URL
+    const mockFetch = vi.fn()
+    vi.stubGlobal('fetch', mockFetch)
+
+    await handler(createStreamEvent('INSERT'), mockContext, noop)
+
+    expect(mockFetch).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
   })
 
   it('should skip records with missing status', async () => {
