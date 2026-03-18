@@ -443,7 +443,16 @@ export class Api extends Construct {
     // -------------------------------------------------------
     this.restApi = new RestApi(this, 'RestApi', {
       restApiName: `receipt-purikura-api-${stage}`,
-      deployOptions: { stageName: stage },
+      deployOptions: {
+        stageName: stage,
+        // Throttle yaji-frame-url: shooting sends 1 frame per 3s, cap at 1 req/s per account
+        methodOptions: {
+          '/api/session/{sessionId}/yaji-frame-url/POST': {
+            throttlingRateLimit: 1,
+            throttlingBurstLimit: 3,
+          },
+        },
+      },
       defaultCorsPreflightOptions: {
         allowOrigins: Cors.ALL_ORIGINS,
         allowMethods: Cors.ALL_METHODS,

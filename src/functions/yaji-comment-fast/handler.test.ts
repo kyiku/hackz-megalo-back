@@ -117,4 +117,28 @@ describe('yaji-comment-fast handler', () => {
     await handler({ ...baseInput, images: [] })
     expect(mockRekognitionSend).not.toHaveBeenCalled()
   })
+
+  it('should not throw when Rekognition throws (error handled internally)', async () => {
+    mockRekognitionSend.mockRejectedValue(new Error('Rekognition error'))
+
+    await expect(handler(baseInput)).resolves.toBeUndefined()
+    expect(mockSendToSession).not.toHaveBeenCalled()
+  })
+
+  it('should not treat non-aws.s3 source as EventBridge event', async () => {
+    mockRekognitionSend.mockResolvedValue({ FaceDetails: [] })
+
+    // Should fall through to YajiInput path (source field ignored for non-aws.s3)
+    const input = { ...baseInput, source: 'custom.source' }
+    await handler(input as Parameters<typeof handler>[0])
+
+    // Rekognition called with YajiInput image path (not EventBridge key path)
+    expect(mockRekognitionSend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: expect.objectContaining({
+          Image: { S3Object: { Bucket: 'test-bucket', Name: 'originals/test-uuid/1.jpg' } },
+        }) as unknown,
+      }),
+    )
+  })
 })

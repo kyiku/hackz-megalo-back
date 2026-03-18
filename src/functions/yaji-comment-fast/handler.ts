@@ -31,57 +31,55 @@ interface EventBridgeS3Event {
 
 type HandlerInput = YajiInput | EventBridgeS3Event
 
+// Cast to {source: string} to allow runtime check without triggering no-unnecessary-condition lint
 const isEventBridge = (e: HandlerInput): e is EventBridgeS3Event =>
-  'source' in e
+  'source' in e && (e as { source: string }).source === 'aws.s3'
+
+const parseInput = (e: HandlerInput) => {
+  if (isEventBridge(e)) {
+    const key = e.detail.object.key
+    return { sessionId: key.split('/')[1] ?? '', bucket: e.detail.bucket.name, imageKey: key }
+  }
+  return { sessionId: e.sessionId, bucket: e.bucket, imageKey: e.images[0] ?? '' }
+}
 
 export const handler = async (event: HandlerInput): Promise<void> => {
-  let sessionId: string
-  let bucket: string
-  let imageKey: string
+  const { sessionId, bucket, imageKey } = parseInput(event)
+  if (!sessionId || !imageKey) return
 
-  if (isEventBridge(event)) {
-    bucket = event.detail.bucket.name
-    imageKey = event.detail.object.key
-    // key format: yaji-frames/{sessionId}/{timestamp}.jpg
-    sessionId = imageKey.split('/')[1] ?? ''
-    if (!sessionId) return
-  } else {
-    const firstImage = event.images[0]
-    if (!firstImage) return
-    sessionId = event.sessionId
-    bucket = event.bucket
-    imageKey = firstImage
+  try {
+    const response = await rekognition.send(
+      new DetectFacesCommand({
+        Image: { S3Object: { Bucket: bucket, Name: imageKey } },
+        Attributes: ['ALL'],
+      }),
+    )
+
+    const faces = response.FaceDetails ?? []
+    if (faces.length === 0) return
+
+    const topEmotion = [...(faces[0]?.Emotions ?? [])].sort(
+      (a, b) => (b.Confidence ?? 0) - (a.Confidence ?? 0),
+    )[0]
+
+    if (!topEmotion?.Type) return
+
+    const templates = EMOTION_TEMPLATES[topEmotion.Type] ?? EMOTION_TEMPLATES.CALM
+    if (!templates || templates.length === 0) return
+
+    const text = templates[Math.floor(Math.random() * templates.length)]
+    if (!text) return
+
+    await sendToSession(sessionId, {
+      type: 'yajiComment',
+      data: {
+        text,
+        emotion: topEmotion.Type,
+        lane: 'fast',
+        timestamp: Math.floor(Date.now() / 1000),
+      },
+    })
+  } catch (err) {
+    console.error('[yaji-comment-fast] error:', err)
   }
-
-  const response = await rekognition.send(
-    new DetectFacesCommand({
-      Image: { S3Object: { Bucket: bucket, Name: imageKey } },
-      Attributes: ['ALL'],
-    }),
-  )
-
-  const faces = response.FaceDetails ?? []
-  if (faces.length === 0) return
-
-  const topEmotion = [...(faces[0]?.Emotions ?? [])].sort(
-    (a, b) => (b.Confidence ?? 0) - (a.Confidence ?? 0),
-  )[0]
-
-  if (!topEmotion?.Type) return
-
-  const templates = EMOTION_TEMPLATES[topEmotion.Type] ?? EMOTION_TEMPLATES.CALM
-  if (!templates || templates.length === 0) return
-
-  const text = templates[Math.floor(Math.random() * templates.length)]
-  if (!text) return
-
-  await sendToSession(sessionId, {
-    type: 'yajiComment',
-    data: {
-      text,
-      emotion: topEmotion.Type,
-      lane: 'fast',
-      timestamp: Math.floor(Date.now() / 1000),
-    },
-  })
 }
