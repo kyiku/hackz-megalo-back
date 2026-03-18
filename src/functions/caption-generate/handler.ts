@@ -93,9 +93,16 @@ export const handler = async (event: CaptionInput): Promise<CaptionOutput> => {
               LanguageCode: 'ja',
             }),
           )
+          const detectedSentiment = sentimentResponse.Sentiment ?? 'NEUTRAL'
+          const scoreMap: Record<string, number> = {
+            POSITIVE: sentimentResponse.SentimentScore?.Positive ?? 0,
+            NEGATIVE: sentimentResponse.SentimentScore?.Negative ?? 0,
+            NEUTRAL:  sentimentResponse.SentimentScore?.Neutral  ?? 0,
+            MIXED:    sentimentResponse.SentimentScore?.Mixed    ?? 0,
+          }
           return {
-            sentiment: sentimentResponse.Sentiment ?? 'NEUTRAL',
-            sentimentScore: sentimentResponse.SentimentScore?.Positive ?? 0,
+            sentiment: detectedSentiment,
+            sentimentScore: scoreMap[detectedSentiment] ?? 0,
           }
         } catch (err) {
           console.error('Comprehend sentiment analysis failed:', err)

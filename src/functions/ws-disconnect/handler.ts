@@ -10,7 +10,8 @@ export const handler: APIGatewayProxyHandler = async (event) => {
   try {
     await deleteConnection(connectionId)
     return { statusCode: 200, body: 'Disconnected' }
-  } catch {
+  } catch (err) {
+    console.error('[ws-disconnect] handler error:', err)
     return { statusCode: 500, body: 'Internal server error' }
   }
 }
