@@ -58,42 +58,34 @@ const notify = async (sessionId: string, progress: number, message: string): Pro
   await sendToSession(sessionId, event).catch(() => undefined)
 }
 
-/** Create an SVG for the receipt header (service name). */
-const createHeaderSvg = (width: number): Buffer => {
-  const svg = `<svg width="${String(width)}" height="50">
-    <text x="${String(width / 2)}" y="35" font-size="24" font-weight="bold" font-family="sans-serif"
-      text-anchor="middle" fill="black">Receipt Purikura</text>
-  </svg>`
-  return Buffer.from(svg)
-}
-
-/** Create an SVG text overlay for caption. */
-const createCaptionSvg = (text: string, width: number): Buffer => {
+/** Create a text image using sharp's built-in text rendering (no external fonts needed). */
+const createTextImage = async (text: string, width: number, height: number, fontSize: number, color = 'black'): Promise<Buffer> => {
   const escaped = text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-  const svg = `<svg width="${String(width)}" height="40">
-    <text x="${String(width / 2)}" y="28" font-size="18" font-family="sans-serif"
-      text-anchor="middle" fill="black">${escaped}</text>
+  // Use SVG with embedded basic font stack
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${String(width)}" height="${String(height)}">
+    <text x="${String(width / 2)}" y="${String(Math.round(height * 0.7))}" font-size="${String(fontSize)}"
+      text-anchor="middle" fill="${color}" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif">${escaped}</text>
   </svg>`
-  return Buffer.from(svg)
+  return sharp(Buffer.from(svg)).png().toBuffer()
 }
 
-/** Create an SVG text overlay for filter name + timestamp. */
-const createFooterSvg = (width: number, filterName: string): Buffer => {
+/** Create receipt header image. */
+const createHeaderImage = (width: number): Promise<Buffer> =>
+  createTextImage('Receipt Purikura', width, 50, 24)
+
+/** Create caption image. */
+const createCaptionImage = (text: string, width: number): Promise<Buffer> =>
+  createTextImage(text, width, 40, 16)
+
+/** Create footer image with filter name + date. */
+const createFooterImage = async (width: number, filterName: string): Promise<Buffer> => {
   const now = new Date()
   const ts = `${String(now.getFullYear())}.${String(now.getMonth() + 1).padStart(2, '0')}.${String(now.getDate()).padStart(2, '0')}`
-  const escaped = filterName
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-  const svg = `<svg width="${String(width)}" height="30">
-    <text x="10" y="20" font-size="12" font-family="monospace" fill="gray">${escaped}</text>
-    <text x="${String(width - 10)}" y="20" font-size="12" font-family="monospace"
-      text-anchor="end" fill="gray">${ts}</text>
-  </svg>`
-  return Buffer.from(svg)
+  const text = `${filterName}  ${ts}`
+  return createTextImage(text, width, 30, 12, 'gray')
 }
 
 /** Select a decorative border based on sentiment. */
@@ -145,7 +137,7 @@ export const handler = async (event: PrintPrepareInput): Promise<PrintPrepareOut
 
   // Header: service name
   overlays.push({
-    input: createHeaderSvg(PRINT_WIDTH),
+    input: await createHeaderImage(PRINT_WIDTH),
     left: 0,
     top: yOffset,
   })
@@ -162,7 +154,7 @@ export const handler = async (event: PrintPrepareInput): Promise<PrintPrepareOut
   // Caption (if available)
   if (caption) {
     overlays.push({
-      input: createCaptionSvg(caption, PRINT_WIDTH),
+      input: await createCaptionImage(caption, PRINT_WIDTH),
       left: 0,
       top: yOffset,
     })
@@ -171,7 +163,7 @@ export const handler = async (event: PrintPrepareInput): Promise<PrintPrepareOut
 
   // Footer: filter name + timestamp
   overlays.push({
-    input: createFooterSvg(PRINT_WIDTH, filter),
+    input: await createFooterImage(PRINT_WIDTH, filter),
     left: 0,
     top: yOffset,
   })
@@ -200,8 +192,8 @@ export const handler = async (event: PrintPrepareInput): Promise<PrintPrepareOut
         }])
         .png()
         .toBuffer()
-    } catch {
-      // シルエット取得失敗時はClayCodeのみで続行
+    } catch (err) {
+      console.error('[print-prepare] silhouette overlay failed:', err)
     }
 
     overlays.push({
