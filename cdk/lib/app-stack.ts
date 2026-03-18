@@ -168,8 +168,8 @@ export class AppStack extends cdk.Stack {
       resources: [webSocketApiArn],
     }))
 
-    // ws-shooting-sync: DynamoDB Query on connections (roomId-index), ManageConnections
-    storage.connectionsTable.grantReadData(api.wsShootingSyncFn)
+    // ws-shooting-sync: DynamoDB Query + Delete on connections (roomId-index), ManageConnections
+    storage.connectionsTable.grantReadWriteData(api.wsShootingSyncFn)
     api.wsShootingSyncFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['execute-api:ManageConnections'],
       resources: [webSocketApiArn],
