@@ -21,10 +21,6 @@ const { mockSharp } = vi.hoisted(() => {
   return { _mockSharpInstance: instance, mockSharp: vi.fn(() => instance) }
 })
 
-const { mockQRCodeToBuffer } = vi.hoisted(() => ({
-  mockQRCodeToBuffer: vi.fn().mockResolvedValue(Buffer.from([1, 2, 3])),
-}))
-
 vi.mock('../../lib/s3', () => ({
   getObject: (...args: unknown[]) => mockGetObject(...args) as unknown,
   putObject: (...args: unknown[]) => mockPutObject(...args) as unknown,
@@ -35,13 +31,6 @@ vi.mock('../../lib/websocket', () => ({
 }))
 
 vi.mock('sharp', () => ({ default: mockSharp }))
-
-vi.mock('qrcode', () => ({
-  default: {
-    toBuffer: (...args: unknown[]) => mockQRCodeToBuffer(...args) as unknown,
-  },
-  toBuffer: (...args: unknown[]) => mockQRCodeToBuffer(...args) as unknown,
-}))
 
 import { handler } from './handler'
 
@@ -62,7 +51,6 @@ describe('print-prepare handler', () => {
     mockGetObject.mockResolvedValue(Buffer.from([1, 2, 3]))
     mockPutObject.mockResolvedValue(undefined)
     mockSendToSession.mockResolvedValue(undefined)
-    process.env.DOWNLOAD_DOMAIN = 'https://example.com'
   })
 
   it('should save download image and print-ready image', async () => {
@@ -81,19 +69,9 @@ describe('print-prepare handler', () => {
     )
   })
 
-  it('should generate QR code for download URL', async () => {
-    await handler(baseInput)
-
-    expect(mockQRCodeToBuffer).toHaveBeenCalledWith(
-      'https://example.com/download/test-uuid',
-      expect.objectContaining({ type: 'png' }) as Record<string, unknown>,
-    )
-  })
-
   it('should create print-ready image with dithering', async () => {
     await handler(baseInput)
 
-    // Should save print-ready image
     expect(mockPutObject).toHaveBeenCalledWith(
       'print-ready/test-uuid.png',
       expect.any(Buffer) as Buffer,
@@ -107,15 +85,23 @@ describe('print-prepare handler', () => {
     expect(result.collageKey).toBe('collages/test-uuid.png')
   })
 
-  it('should use default domain when DOWNLOAD_DOMAIN is not set', async () => {
-    delete process.env.DOWNLOAD_DOMAIN
+  it('should include ClayCode in print layout when downloadCode is provided', async () => {
+    const result = await handler({
+      ...baseInput,
+      downloadCode: '12345',
+    })
 
-    await handler(baseInput)
+    expect(result.downloadKey).toBe('downloads/test-uuid.png')
+    expect(result.printKey).toBe('print-ready/test-uuid.png')
+    // sharp is called extra times for ClayCode SVG rendering
+    expect(mockSharp).toHaveBeenCalled()
+  })
 
-    expect(mockQRCodeToBuffer).toHaveBeenCalledWith(
-      expect.stringContaining('/download/test-uuid') as string,
-      expect.any(Object) as Record<string, unknown>,
-    )
+  it('should work without downloadCode (no ClayCode)', async () => {
+    const result = await handler(baseInput)
+
+    expect(result.printKey).toBe('print-ready/test-uuid.png')
+    expect(mockPutObject).toHaveBeenCalledTimes(2)
   })
 
   it('should include caption in print layout when provided', async () => {

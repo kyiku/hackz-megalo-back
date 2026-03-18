@@ -1,7 +1,7 @@
 import sharp from 'sharp'
-import QRCode from 'qrcode'
 import { getObject, putObject } from '../../lib/s3'
 import { sendToSession } from '../../lib/websocket'
+import { generateClaycodeSvg } from '../../lib/claycode'
 import type { PipelineInput, ProgressEvent } from '../../lib/types'
 
 interface PrintPrepareInput extends PipelineInput {
@@ -126,8 +126,10 @@ const createFrameSvg = (width: number, height: number, sentimentScore: number): 
   return Buffer.from(svg)
 }
 
+const CLAYCODE_SIZE = 200
+
 export const handler = async (event: PrintPrepareInput): Promise<PrintPrepareOutput> => {
-  const { sessionId, collageKey, caption, filter, sentimentScore } = event
+  const { sessionId, collageKey, caption, filter, sentimentScore, downloadCode } = event
 
   await notify(sessionId, 60, '印刷データ準備中...')
 
@@ -137,20 +139,12 @@ export const handler = async (event: PrintPrepareInput): Promise<PrintPrepareOut
   const downloadKey = `downloads/${sessionId}.png`
   await putObject(downloadKey, collageBuffer)
 
-  // Generate QR code
-  const domain = process.env.DOWNLOAD_DOMAIN ?? 'https://receipt-purikura.example.com'
-  const qrBuffer = await QRCode.toBuffer(`${domain}/download/${sessionId}`, {
-    type: 'png',
-    width: 120,
-    margin: 1,
-  })
-
-  // Layout: header(50) + collage(576) + caption(40?) + footer(30) + QR(135)
+  // Layout: header(50) + collage(576) + caption(40?) + footer(30) + ClayCode(220 if present)
   const headerHeight = 50
   const captionHeight = caption ? 40 : 0
   const footerHeight = 30
-  const qrHeight = 135
-  const totalHeight = headerHeight + PRINT_WIDTH + captionHeight + footerHeight + qrHeight
+  const clayCodeHeight = downloadCode ? CLAYCODE_SIZE + 20 : 0
+  const totalHeight = headerHeight + PRINT_WIDTH + captionHeight + footerHeight + clayCodeHeight
 
   // Build composite overlays
   const overlays: sharp.OverlayOptions[] = []
@@ -190,12 +184,17 @@ export const handler = async (event: PrintPrepareInput): Promise<PrintPrepareOut
   })
   yOffset += footerHeight
 
-  // QR code
-  overlays.push({
-    input: await sharp(qrBuffer).resize(120, 120).toBuffer(),
-    left: Math.floor((PRINT_WIDTH - 120) / 2),
-    top: yOffset + 8,
-  })
+  // ClayCode visual scan code (replaces QR code)
+  if (downloadCode) {
+    const claycodeBuffer = await sharp(Buffer.from(generateClaycodeSvg(downloadCode, CLAYCODE_SIZE)))
+      .png()
+      .toBuffer()
+    overlays.push({
+      input: claycodeBuffer,
+      left: Math.floor((PRINT_WIDTH - CLAYCODE_SIZE) / 2),
+      top: yOffset + 10,
+    })
+  }
 
   // Sentiment-based decorative frame overlay (over the entire layout)
   const score = sentimentScore ?? 0.5

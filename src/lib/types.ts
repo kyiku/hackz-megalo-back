@@ -26,6 +26,7 @@ export interface Session {
   readonly filter: Filter
   readonly status: SessionStatus
   readonly photoCount: number
+  readonly downloadCode?: string
   readonly caption?: string
   readonly sentiment?: string
   readonly sentimentScore?: number
@@ -84,4 +85,5 @@ export interface PipelineInput {
   readonly filter: Filter
   readonly images: readonly string[]
   readonly bucket: string
+  readonly downloadCode?: string
 }
