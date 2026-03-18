@@ -100,6 +100,7 @@ export class Api extends Construct {
   // Yaji comment Lambda functions
   public readonly yajiCommentFastFn: NodejsFunction
   public readonly yajiCommentDeepFn: NodejsFunction
+  public readonly yajiTriggerFn: NodejsFunction
 
   // Pipeline complete Lambda function
   public readonly pipelineCompleteFn: NodejsFunction
@@ -346,6 +347,17 @@ export class Api extends Construct {
       },
     }))
 
+    this.yajiTriggerFn = new NodejsFunction(this, 'YajiTriggerFn', createCommonProps({
+      name: 'yaji-trigger',
+      timeout: Duration.seconds(10),
+      environment: {
+        S3_BUCKET: bucketName,
+        DYNAMODB_TABLE: sessionsTableName,
+        YAJI_FAST_FUNCTION_NAME: this.yajiCommentFastFn.functionName,
+        YAJI_DEEP_FUNCTION_NAME: this.yajiCommentDeepFn.functionName,
+      },
+    }))
+
     // -------------------------------------------------------
     // Stats Lambda function
     // -------------------------------------------------------
@@ -460,5 +472,9 @@ export class Api extends Construct {
     // POST /api/session/{sessionId}/process
     const processResource = sessionIdResource.addResource('process')
     processResource.addMethod('POST', new LambdaIntegration(this.processStartFn))
+
+    // POST /api/session/{sessionId}/yaji
+    const yajiResource = sessionIdResource.addResource('yaji')
+    yajiResource.addMethod('POST', new LambdaIntegration(this.yajiTriggerFn))
   }
 }

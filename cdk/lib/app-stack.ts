@@ -247,6 +247,16 @@ export class AppStack extends cdk.Stack {
       resources: [webSocketApiArn],
     }))
 
+    // yaji-trigger: DynamoDB GetItem (sessions), Lambda InvokeFunction on yaji Lambdas
+    storage.sessionsTable.grantReadData(api.yajiTriggerFn)
+    api.yajiTriggerFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['lambda:InvokeFunction'],
+      resources: [
+        api.yajiCommentFastFn.functionArn,
+        api.yajiCommentDeepFn.functionArn,
+      ],
+    }))
+
     // yaji-comment-fast: S3 GetObject, DynamoDB Query connections, ManageConnections, Rekognition
     storage.bucket.grantRead(api.yajiCommentFastFn)
     storage.connectionsTable.grantReadData(api.yajiCommentFastFn)
