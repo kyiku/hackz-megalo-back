@@ -217,13 +217,13 @@ describe('filter-apply handler (AI filters)', () => {
 
     const call = mockBedrockSend.mock.calls[0]?.[0] as { input: { body: string } }
     const body = JSON.parse(call.input.body) as Record<string, unknown>
-    expect(body['mode']).toBe('image-to-image')
-    expect(body['strength']).toBeTypeOf('number')
-    expect(body['image']).toBeTypeOf('string')
-    expect(body['prompt']).toBeTypeOf('string')
+    expect(body.mode).toBe('image-to-image')
+    expect(body.strength).toBeTypeOf('number')
+    expect(body.image).toBeTypeOf('string')
+    expect(body.prompt).toBeTypeOf('string')
     // fidelity/style_preset must not be sent
-    expect(body['fidelity']).toBeUndefined()
-    expect(body['style_preset']).toBeUndefined()
+    expect(body.fidelity).toBeUndefined()
+    expect(body.style_preset).toBeUndefined()
   })
 
   it('should save AI-filtered images to S3', async () => {
