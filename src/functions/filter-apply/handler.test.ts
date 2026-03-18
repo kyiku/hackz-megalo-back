@@ -186,7 +186,7 @@ describe('filter-apply handler (AI filters)', () => {
     })
 
     const call = mockBedrockSend.mock.calls[0]?.[0] as { input: { modelId: string; body: string } }
-    expect(call.input.modelId).toBe('us.stability.stable-image-core-v1:0')
+    expect(call.input.modelId).toBe('stability.stable-image-core-v1:1')
   })
 
   it('should send image-to-image mode and strength parameters', async () => {

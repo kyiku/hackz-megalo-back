@@ -9,7 +9,7 @@ interface FilterApplyOutput extends PipelineInput {
   readonly filteredImages: readonly string[]
 }
 
-const bedrock = new BedrockRuntimeClient({})
+const bedrock = new BedrockRuntimeClient({ region: 'us-west-2' })
 
 /**
  * Limit concurrent AI pipeline runs (getObject → Bedrock → putObject) to 2.
@@ -71,7 +71,7 @@ const applyAiFilter = async (imageBuffer: Buffer, filter: AiFilter): Promise<Buf
 
   const response = await bedrock.send(
     new InvokeModelCommand({
-      modelId: 'us.stability.stable-image-core-v1:0',
+      modelId: 'stability.stable-image-core-v1:1',
       contentType: 'application/json',
       accept: 'application/json',
       body: JSON.stringify({
