@@ -42,36 +42,43 @@ const notify = async (sessionId: string, progress: number, message: string): Pro
   await sendToSession(sessionId, event).catch(() => undefined)
 }
 
-/** Per-filter style transfer parameters (Stability AI Style Transfer). */
-const AI_STYLE_PARAMS: Record<AiFilter, {
-  readonly style_strength: number
-  readonly composition_fidelity: number
-  readonly change_strength: number
+/** Per-filter prompt and strength for SD3.5 img2img. */
+const AI_FILTER_CONFIG: Record<AiFilter, {
+  readonly prompt: string
+  readonly strength: number
 }> = {
-  anime:      { style_strength: 0.90, composition_fidelity: 0.85, change_strength: 0.85 },
-  popart:     { style_strength: 0.95, composition_fidelity: 0.80, change_strength: 0.90 },
-  watercolor: { style_strength: 0.85, composition_fidelity: 0.90, change_strength: 0.80 },
+  anime: {
+    prompt: 'anime style illustration, vibrant colors, cel shading, clean lines, studio ghibli aesthetic',
+    strength: 0.65,
+  },
+  popart: {
+    prompt: 'pop art style, bold flat colors, halftone dots, thick black outlines, Andy Warhol aesthetic, comic book',
+    strength: 0.70,
+  },
+  watercolor: {
+    prompt: 'watercolor painting, soft wet brushstrokes, pastel colors, artistic, flowing paint, paper texture',
+    strength: 0.60,
+  },
 }
 
 interface StabilityResponse {
   readonly images: readonly string[]
 }
 
-/** Apply AI style transfer via Stability AI Style Transfer on Bedrock (us-west-2). */
-const applyAiFilter = async (imageBuffer: Buffer, styleBuffer: Buffer, filter: AiFilter): Promise<Buffer> => {
-  const params = AI_STYLE_PARAMS[filter]
+/** Apply AI style via Stable Diffusion 3.5 img2img on Bedrock (us-west-2). */
+const applyAiFilter = async (imageBuffer: Buffer, filter: AiFilter): Promise<Buffer> => {
+  const config = AI_FILTER_CONFIG[filter]
 
   const response = await bedrock.send(
     new InvokeModelCommand({
-      modelId: 'us.stability.stable-style-transfer-v1:0',
+      modelId: 'stability.sd3-5-large-v1:0',
       contentType: 'application/json',
       accept: 'application/json',
       body: JSON.stringify({
-        init_image: imageBuffer.toString('base64'),
-        style_image: styleBuffer.toString('base64'),
-        style_strength: params.style_strength,
-        composition_fidelity: params.composition_fidelity,
-        change_strength: params.change_strength,
+        prompt: config.prompt,
+        image: imageBuffer.toString('base64'),
+        mode: 'image-to-image',
+        strength: config.strength,
         output_format: 'png',
       }),
     }),
@@ -87,17 +94,6 @@ const applyAiFilter = async (imageBuffer: Buffer, styleBuffer: Buffer, filter: A
   return Buffer.from(outputBase64, 'base64')
 }
 
-/** Fetch style reference image from S3. Falls back to null if missing. */
-const fetchStyleBuffer = async (filter: Filter, filterType: string): Promise<Buffer | null> => {
-  if (filterType !== 'ai' || !isAiFilter(filter)) return null
-  try {
-    return await getObject(`style-references/${filter}.jpg`)
-  } catch {
-    console.warn(`[filter-apply] style-references/${filter}.jpg not found, falling back to simple filter`)
-    return null
-  }
-}
-
 const isAiFilter = (filter: Filter): filter is AiFilter =>
   filter === 'anime' || filter === 'popart' || filter === 'watercolor'
 
@@ -106,16 +102,13 @@ export const handler = async (event: PipelineInput): Promise<FilterApplyOutput> 
 
   await notify(sessionId, 10, 'フィルター適用中...')
 
-  // スタイル参照画像を1回だけ取得（AI filterの場合）
-  const styleBuffer = await fetchStyleBuffer(filter, filterType)
-
   const filteredImages = await Promise.all(
     images.map((imageKey, i) =>
       bedrockLimit(async () => {
         const imageBuffer = await getObject(imageKey)
 
-        const outputBuffer = (filterType === 'ai' && isAiFilter(filter) && styleBuffer)
-          ? await applyAiFilter(imageBuffer, styleBuffer, filter)
+        const outputBuffer = (filterType === 'ai' && isAiFilter(filter))
+          ? await applyAiFilter(imageBuffer, filter)
           : await applySimpleFilter(sharp(imageBuffer), filter).png().toBuffer()
 
         const outputKey = `filtered/${sessionId}/${String(i + 1)}.png`

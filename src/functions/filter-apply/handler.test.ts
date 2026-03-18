@@ -148,9 +148,8 @@ describe('filter-apply handler (AI filters)', () => {
       filter: 'anime',
     })
 
-    // 1 style reference + 2 photo images = 3 getObject calls
-    expect(mockGetObject).toHaveBeenCalledTimes(3)
-    expect(mockGetObject).toHaveBeenCalledWith('style-references/anime.jpg')
+    // No style reference needed - only 2 photo getObject calls
+    expect(mockGetObject).toHaveBeenCalledTimes(2)
     expect(mockBedrockSend).toHaveBeenCalledTimes(2)
     expect(mockSharpInstance.blur).not.toHaveBeenCalled()
     expect(result.filteredImages).toHaveLength(2)
@@ -163,7 +162,6 @@ describe('filter-apply handler (AI filters)', () => {
       filter: 'popart',
     })
 
-    expect(mockGetObject).toHaveBeenCalledWith('style-references/popart.jpg')
     expect(mockBedrockSend).toHaveBeenCalledTimes(2)
   })
 
@@ -174,38 +172,23 @@ describe('filter-apply handler (AI filters)', () => {
       filter: 'watercolor',
     })
 
-    expect(mockGetObject).toHaveBeenCalledWith('style-references/watercolor.jpg')
     expect(mockBedrockSend).toHaveBeenCalledTimes(2)
   })
 
-  it('should use correct model ID (stable-style-transfer-v1)', async () => {
+  it('should use SD3.5 model with img2img mode', async () => {
     await handler({
       ...baseInput,
       filterType: 'ai',
       filter: 'anime',
     })
 
-    expect(mockGetObject).toHaveBeenCalledWith('style-references/anime.jpg')
     const call = mockBedrockSend.mock.calls[0]?.[0] as { input: { modelId: string; body: string } }
-    expect(call.input.modelId).toBe('us.stability.stable-style-transfer-v1:0')
-  })
-
-  it('should send style_image and style_strength parameters', async () => {
-    await handler({
-      ...baseInput,
-      filterType: 'ai',
-      filter: 'anime',
-    })
-
-    const call = mockBedrockSend.mock.calls[0]?.[0] as { input: { body: string } }
+    expect(call.input.modelId).toBe('stability.sd3-5-large-v1:0')
     const body = JSON.parse(call.input.body) as Record<string, unknown>
-    expect(body).toHaveProperty('style_image')
-    expect(body).toHaveProperty('style_strength')
-    expect(body).toHaveProperty('composition_fidelity')
-    expect(body).toHaveProperty('change_strength')
-    expect(body.init_image).toBeTypeOf('string')
-    expect(body).not.toHaveProperty('prompt')
-    expect(body).not.toHaveProperty('mode')
+    expect(body.mode).toBe('image-to-image')
+    expect(body.prompt).toBeTypeOf('string')
+    expect(body.image).toBeTypeOf('string')
+    expect(body.strength).toBeTypeOf('number')
   })
 
   it('should save AI-filtered images to S3', async () => {
