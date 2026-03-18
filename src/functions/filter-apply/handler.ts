@@ -42,22 +42,26 @@ const notify = async (sessionId: string, progress: number, message: string): Pro
   await sendToSession(sessionId, event).catch(() => undefined)
 }
 
-/** Per-filter prompt and strength for SD3.5 img2img. */
+/** Per-filter prompt, negative prompt, and strength for SD3.5 img2img. */
 const AI_FILTER_CONFIG: Record<AiFilter, {
   readonly prompt: string
+  readonly negative_prompt: string
   readonly strength: number
 }> = {
   anime: {
-    prompt: 'anime style illustration, vibrant colors, cel shading, clean lines, studio ghibli aesthetic',
-    strength: 0.65,
-  },
-  popart: {
-    prompt: 'pop art style, bold flat colors, halftone dots, thick black outlines, Andy Warhol aesthetic, comic book',
+    prompt: 'masterpiece anime illustration of a person, Studio Ghibli style, cel shading, flat vibrant colors, clean sharp lineart, large expressive eyes, soft lighting, detailed hair, manga aesthetic, high quality digital art, 4k, beautiful composition',
+    negative_prompt: 'photorealistic, photograph, 3d render, blurry, low quality, deformed, ugly, text, watermark',
     strength: 0.70,
   },
+  popart: {
+    prompt: 'Andy Warhol pop art screen print portrait, bold saturated flat colors, CMYK halftone dot pattern, thick black outlines, high contrast, Lichtenstein comic book style, Ben-Day dots, graphic design, silkscreen print, retro 1960s aesthetic, vibrant neon colors',
+    negative_prompt: 'photorealistic, soft gradients, blurry, muted colors, watercolor, pencil sketch, 3d render',
+    strength: 0.75,
+  },
   watercolor: {
-    prompt: 'watercolor painting, soft wet brushstrokes, pastel colors, artistic, flowing paint, paper texture',
-    strength: 0.60,
+    prompt: 'beautiful watercolor painting portrait on textured cold press paper, loose wet-on-wet brushstrokes, transparent color washes, visible paint bleeding and granulation, soft diffused edges, artistic color mixing, impressionist style, subtle paper grain texture, professional traditional media art',
+    negative_prompt: 'digital art, sharp lines, photorealistic, flat colors, anime, cartoon, 3d render, heavy outlines',
+    strength: 0.65,
   },
 }
 
@@ -76,6 +80,7 @@ const applyAiFilter = async (imageBuffer: Buffer, filter: AiFilter): Promise<Buf
       accept: 'application/json',
       body: JSON.stringify({
         prompt: config.prompt,
+        negative_prompt: config.negative_prompt,
         image: imageBuffer.toString('base64'),
         mode: 'image-to-image',
         strength: config.strength,
