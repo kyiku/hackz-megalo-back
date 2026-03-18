@@ -203,7 +203,7 @@ describe('filter-apply handler (AI filters)', () => {
     expect(body).toHaveProperty('style_strength')
     expect(body).toHaveProperty('composition_fidelity')
     expect(body).toHaveProperty('change_strength')
-    expect(body.image).toBeTypeOf('string')
+    expect(body.init_image).toBeTypeOf('string')
     expect(body).not.toHaveProperty('prompt')
     expect(body).not.toHaveProperty('mode')
   })
