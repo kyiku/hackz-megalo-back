@@ -85,4 +85,5 @@ export interface PipelineInput {
   readonly filter: Filter
   readonly images: readonly string[]
   readonly bucket: string
+  readonly downloadCode?: string
 }

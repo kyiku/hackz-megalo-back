@@ -19,7 +19,8 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     await putConnection(connection)
 
     return { statusCode: 200, body: 'Connected' }
-  } catch {
+  } catch (err) {
+    console.error('[ws-connect] handler error:', err)
     return { statusCode: 500, body: 'Internal server error' }
   }
 }

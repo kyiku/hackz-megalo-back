@@ -31,6 +31,8 @@ const CANVAS_WIDTH = 576
 const PADDING = 10
 const GAP = 6
 
+
+
 const notify = async (sessionId: string, progress: number, message: string): Promise<void> => {
   const event: ProgressEvent = {
     type: 'statusUpdate',

@@ -29,7 +29,8 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     )
 
     return { statusCode: 200, body: 'OK' }
-  } catch {
+  } catch (err) {
+    console.error('[ws-webrtc-offer] handler error:', err)
     return { statusCode: 500, body: 'Internal server error' }
   }
 }

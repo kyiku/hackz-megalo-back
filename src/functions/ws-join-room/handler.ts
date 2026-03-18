@@ -21,7 +21,8 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     })
 
     return { statusCode: 200, body: 'Joined' }
-  } catch {
+  } catch (err) {
+    console.error('[ws-join-room] handler error:', err)
     return { statusCode: 500, body: 'Internal server error' }
   }
 }
