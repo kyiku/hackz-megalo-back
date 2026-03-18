@@ -174,13 +174,35 @@ export const handler = async (event: PrintPrepareInput): Promise<PrintPrepareOut
   })
   yOffset += footerHeight
 
-  // ClayCode visual scan code (replaces QR code)
+  // ClayCode visual scan code + シルエットオーバーレイ
   if (downloadCode) {
     const claycodeBuffer = await sharp(Buffer.from(generateClaycodeSvg(downloadCode, CLAYCODE_SIZE)))
       .png()
       .toBuffer()
+
+    // シルエット画像をS3から取得して中央に合成
+    let claycodeFinal = claycodeBuffer
+    try {
+      const silhouetteBuffer = await getObject('claycode-shapes/hedgehog.png')
+      const silhouetteSize = Math.floor(CLAYCODE_SIZE * 0.5)
+      const silhouetteResized = await sharp(silhouetteBuffer)
+        .resize(silhouetteSize, silhouetteSize, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+        .toBuffer()
+
+      claycodeFinal = await sharp(claycodeBuffer)
+        .composite([{
+          input: silhouetteResized,
+          left: Math.floor((CLAYCODE_SIZE - silhouetteSize) / 2),
+          top: Math.floor((CLAYCODE_SIZE - silhouetteSize) / 2),
+        }])
+        .png()
+        .toBuffer()
+    } catch {
+      // シルエット取得失敗時はClayCodeのみで続行
+    }
+
     overlays.push({
-      input: claycodeBuffer,
+      input: claycodeFinal,
       left: Math.floor((PRINT_WIDTH - CLAYCODE_SIZE) / 2),
       top: yOffset + 10,
     })
