@@ -123,6 +123,9 @@ export class Api extends Construct {
   // Voice command Lambda function
   public readonly voiceCommandFn: NodejsFunction
 
+  // Download by code Lambda function
+  public readonly downloadByCodeFn: NodejsFunction
+
   constructor(scope: Construct, id: string, props: ApiProps) {
     super(scope, id)
 
@@ -406,6 +409,15 @@ export class Api extends Construct {
       },
     }))
 
+    this.downloadByCodeFn = new NodejsFunction(this, 'DownloadByCodeFn', createCommonProps({
+      name: 'download-by-code',
+      timeout: Duration.seconds(10),
+      environment: {
+        DYNAMODB_TABLE: sessionsTableName,
+        S3_BUCKET: bucketName,
+      },
+    }))
+
     // -------------------------------------------------------
     // Invocation targets (Provisioned Concurrency disabled:
     // account concurrent execution quota too low.
@@ -504,5 +516,10 @@ export class Api extends Construct {
     // POST /api/session/{sessionId}/yaji-frame-url
     const yajiFrameUrlResource = sessionIdResource.addResource('yaji-frame-url')
     yajiFrameUrlResource.addMethod('POST', new LambdaIntegration(this.yajiFrameUrlFn))
+
+    // GET /api/download/{code}
+    const downloadResource = apiResource.addResource('download')
+    const downloadCodeResource = downloadResource.addResource('{code}')
+    downloadCodeResource.addMethod('GET', new LambdaIntegration(this.downloadByCodeFn))
   }
 }
