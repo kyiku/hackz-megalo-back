@@ -119,8 +119,8 @@ export class AppStack extends cdk.Stack {
     // IAM Permissions
     // -------------------------------------------------------
 
-    // session-create: DynamoDB PutItem on sessions, S3 read/write
-    storage.sessionsTable.grantWriteData(api.sessionCreateFn)
+    // session-create: DynamoDB PutItem + Query(downloadCode-index) on sessions, S3 read/write
+    storage.sessionsTable.grantReadWriteData(api.sessionCreateFn)
     storage.bucket.grantReadWrite(api.sessionCreateFn)
 
     // session-get: DynamoDB GetItem on sessions, S3 GetObject for presigned URLs

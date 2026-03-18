@@ -64,6 +64,12 @@ export class Storage extends Construct {
       removalPolicy: RemovalPolicy.DESTROY,
     })
 
+    // GSI: downloadCode → sessionId の逆引き (ClayCode連携)
+    this.sessionsTable.addGlobalSecondaryIndex({
+      indexName: 'downloadCode-index',
+      partitionKey: { name: 'downloadCode', type: AttributeType.STRING },
+    })
+
     // DynamoDB Connections Table
     this.connectionsTable = new Table(this, 'ConnectionsTable', {
       tableName: `receipt-purikura-connections-${stage}`,

@@ -1,12 +1,27 @@
 import type { APIGatewayProxyHandler } from 'aws-lambda'
 import { randomUUID } from 'node:crypto'
 import { CreateSessionSchema } from '../../utils/validation'
-import { putSession } from '../../lib/dynamodb'
+import { putSession, getSessionByDownloadCode } from '../../lib/dynamodb'
 import { generatePresignedUploadUrl } from '../../lib/s3'
 import { success, error } from '../../utils/response'
 import type { Session } from '../../lib/types'
 
 const TTL_DAYS = 30
+const MAX_CODE_RETRIES = 10
+
+/** Generate a zero-padded 5-digit download code (00000–99999). */
+const generateDownloadCode = (): string =>
+  String(Math.floor(Math.random() * 100000)).padStart(5, '0')
+
+/** Find an unused 5-digit download code, retrying on collisions. */
+const findUniqueDownloadCode = async (): Promise<string | null> => {
+  for (let attempt = 0; attempt < MAX_CODE_RETRIES; attempt++) {
+    const candidate = generateDownloadCode()
+    const existing = await getSessionByDownloadCode(candidate)
+    if (!existing) return candidate
+  }
+  return null
+}
 
 export const handler: APIGatewayProxyHandler = async (event) => {
   try {
@@ -32,6 +47,12 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     const sessionId = randomUUID()
     const now = new Date()
 
+    const downloadCode = await findUniqueDownloadCode()
+    if (!downloadCode) {
+      console.error('Failed to generate unique downloadCode after retries')
+      return error('Service temporarily unavailable', 503)
+    }
+
     const session: Session = {
       sessionId,
       createdAt: now.toISOString(),
@@ -39,6 +60,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       filter,
       status: 'uploading',
       photoCount,
+      downloadCode,
       ttl: Math.floor(now.getTime() / 1000) + TTL_DAYS * 86400,
     }
 
@@ -53,7 +75,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
     await putSession(session)
 
-    return success({ sessionId, uploadUrls, websocketUrl }, 201)
+    return success({ sessionId, downloadCode, uploadUrls, websocketUrl }, 201)
   } catch (err) {
     console.error('session-create failed:', err)
     return error('Internal server error', 500)
