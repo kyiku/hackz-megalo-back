@@ -82,6 +82,7 @@ export class Pipeline extends Construct {
         'bucket.$': '$[1].bucket',
         'filteredImages.$': '$[1].filteredImages',
         'faces.$': '$[0].faces',
+        'downloadCode.$': '$[1].downloadCode',
       },
     })
 
