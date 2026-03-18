@@ -31,40 +31,7 @@ const CANVAS_WIDTH = 576
 const PADDING = 10
 const GAP = 6
 
-const CELL_SIZE_2x2 = Math.floor((CANVAS_SIZE - PADDING * 2 - GAP) / 2)
 
-/**
- * Crop to square centered on the primary face.
- * If no face data, falls back to center crop.
- */
-const smartCropToSquare = async (
-  buffer: Buffer,
-  cellSize: number,
-  face?: FaceBoundingBox,
-): Promise<Buffer> => {
-  const image = sharp(buffer)
-  const { width: imgW, height: imgH } = await image.metadata()
-  if (!imgW || !imgH) throw new Error('Invalid image: missing dimensions')
-  const cropSize = Math.min(imgW, imgH)
-
-  let left: number
-  let top: number
-
-  if (face) {
-    const faceCenterX = Math.round((face.left + face.width / 2) * imgW)
-    const faceCenterY = Math.round((face.top + face.height / 2) * imgH)
-    left = Math.max(0, Math.min(imgW - cropSize, faceCenterX - Math.floor(cropSize / 2)))
-    top = Math.max(0, Math.min(imgH - cropSize, faceCenterY - Math.floor(cropSize / 2)))
-  } else {
-    left = Math.floor((imgW - cropSize) / 2)
-    top = Math.floor((imgH - cropSize) / 2)
-  }
-
-  return image
-    .extract({ left, top, width: cropSize, height: cropSize })
-    .resize(cellSize, cellSize)
-    .toBuffer()
-}
 
 const notify = async (sessionId: string, progress: number, message: string): Promise<void> => {
   const event: ProgressEvent = {
