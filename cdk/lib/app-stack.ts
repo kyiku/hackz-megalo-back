@@ -191,11 +191,11 @@ export class AppStack extends cdk.Stack {
     storage.bucket.grantReadWrite(api.filterApplyFn)
     storage.connectionsTable.grantReadData(api.filterApplyFn)
     api.filterApplyFn.addToRolePolicy(new iam.PolicyStatement({
-      actions: ['bedrock:InvokeModel'],
+      actions: ['bedrock:*'],
       resources: ['*'],
     }))
     api.filterApplyFn.addToRolePolicy(new iam.PolicyStatement({
-      actions: ['aws-marketplace:ViewSubscriptions', 'aws-marketplace:Subscribe'],
+      actions: ['aws-marketplace:*'],
       resources: ['*'],
     }))
     api.filterApplyFn.addToRolePolicy(new iam.PolicyStatement({
