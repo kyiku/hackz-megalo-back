@@ -44,6 +44,11 @@ vi.mock('@aws-sdk/client-bedrock-runtime', () => ({
   },
 }))
 
+// p-limit passthrough mock: concurrency limit is tested via Bedrock call count in integration
+vi.mock('p-limit', () => ({
+  default: () => (fn: () => unknown) => fn(),
+}))
+
 import { handler } from './handler'
 import type { PipelineInput } from '../../lib/types'
 
@@ -143,9 +148,31 @@ describe('filter-apply handler (AI filters)', () => {
       filter: 'anime',
     })
 
+    // 1 style image + 2 photo images
+    expect(mockGetObject).toHaveBeenCalledTimes(3)
+    expect(mockGetObject).toHaveBeenCalledWith('style-references/anime.jpg')
     expect(mockBedrockSend).toHaveBeenCalledTimes(2)
     expect(mockSharpInstance.blur).not.toHaveBeenCalled()
     expect(result.filteredImages).toHaveLength(2)
+  })
+
+  it('should use correct model ID and style_image parameter', async () => {
+    await handler({
+      ...baseInput,
+      filterType: 'ai',
+      filter: 'anime',
+    })
+
+    const call = mockBedrockSend.mock.calls[0] as [{ input: unknown }]
+    const cmd = call[0] as { input: { modelId: string; body: string } }
+    expect(cmd.input.modelId).toBe('us.stability.stable-style-transfer-v1:0')
+    const body = JSON.parse(cmd.input.body) as Record<string, unknown>
+    expect(body).toHaveProperty('style_image')
+    expect(body).toHaveProperty('style_strength')
+    expect(body).toHaveProperty('composition_fidelity')
+    expect(body).toHaveProperty('change_strength')
+    expect(body).not.toHaveProperty('prompt')
+    expect(body).not.toHaveProperty('style_preset')
   })
 
   it('should call Bedrock for popart filter', async () => {
@@ -155,6 +182,7 @@ describe('filter-apply handler (AI filters)', () => {
       filter: 'popart',
     })
 
+    expect(mockGetObject).toHaveBeenCalledWith('style-references/popart.jpg')
     expect(mockBedrockSend).toHaveBeenCalledTimes(2)
   })
 
@@ -165,6 +193,7 @@ describe('filter-apply handler (AI filters)', () => {
       filter: 'watercolor',
     })
 
+    expect(mockGetObject).toHaveBeenCalledWith('style-references/watercolor.jpg')
     expect(mockBedrockSend).toHaveBeenCalledTimes(2)
   })
 
@@ -191,5 +220,22 @@ describe('filter-apply handler (AI filters)', () => {
 
     expect(mockBedrockSend).not.toHaveBeenCalled()
     expect(mockSharpInstance.png).toHaveBeenCalled()
+  })
+
+  it('should fall back to simple filter when style reference image is missing in S3', async () => {
+    // style-references/anime.jpg fetch fails, photo fetches succeed
+    mockGetObject
+      .mockRejectedValueOnce(new Error('NoSuchKey: style-references/anime.jpg'))
+      .mockResolvedValue(Buffer.from([255, 0, 0]))
+
+    const result = await handler({
+      ...baseInput,
+      filterType: 'ai',
+      filter: 'anime',
+    })
+
+    expect(mockBedrockSend).not.toHaveBeenCalled()
+    expect(mockSharpInstance.png).toHaveBeenCalled()
+    expect(result.filteredImages).toHaveLength(2)
   })
 })

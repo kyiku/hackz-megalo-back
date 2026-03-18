@@ -1,4 +1,5 @@
 import sharp from 'sharp'
+import pLimit from 'p-limit'
 import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime'
 import { getObject, putObject } from '../../lib/s3'
 import { sendToSession } from '../../lib/websocket'
@@ -35,39 +36,47 @@ const notify = async (sessionId: string, progress: number, message: string): Pro
   await sendToSession(sessionId, event).catch(() => undefined)
 }
 
-/** Map AI filter names to Stability AI style_preset values. */
-const AI_STYLE_PRESETS: Record<AiFilter, string> = {
-  anime: 'anime',
-  popart: 'comic-book',
-  watercolor: 'digital-art',
-}
-
-/** Map AI filter names to descriptive prompts. */
-const AI_PROMPTS: Record<AiFilter, string> = {
-  anime: 'anime style illustration, vibrant colors, cel shading',
-  popart: 'pop art style, bold colors, halftone dots, comic book aesthetic',
-  watercolor: 'watercolor painting, soft brushstrokes, artistic, flowing colors',
+/**
+ * Per-filter style transfer strength parameters.
+ * Stability AI Style Transfer valid range: all values 0.0–1.0
+ *   style_strength:       how strongly the style is applied
+ *   composition_fidelity: how closely the composition follows the content image (higher = more faithful)
+ *   change_strength:      overall degree of transformation applied
+ */
+const AI_STYLE_PARAMS: Record<AiFilter, {
+  readonly style_strength: number
+  readonly composition_fidelity: number
+  readonly change_strength: number
+}> = {
+  anime:      { style_strength: 0.90, composition_fidelity: 0.85, change_strength: 0.85 },
+  popart:     { style_strength: 0.95, composition_fidelity: 0.80, change_strength: 0.90 },
+  watercolor: { style_strength: 0.85, composition_fidelity: 0.90, change_strength: 0.80 },
 }
 
 interface StabilityResponse {
   readonly images: readonly string[]
 }
 
-/** Apply AI style transfer via Stability AI on Bedrock. */
-const applyAiFilter = async (imageBuffer: Buffer, filter: AiFilter): Promise<Buffer> => {
-  const base64Image = imageBuffer.toString('base64')
+/** Apply AI style transfer via Stability AI Style Transfer on Bedrock. */
+const applyAiFilter = async (
+  imageBuffer: Buffer,
+  styleBuffer: Buffer,
+  filter: AiFilter,
+): Promise<Buffer> => {
+  const params = AI_STYLE_PARAMS[filter]
 
   const response = await bedrock.send(
     new InvokeModelCommand({
-      modelId: 'us.stability.stable-image-style-guide-v1:0',
+      modelId: 'us.stability.stable-style-transfer-v1:0',
       contentType: 'application/json',
       accept: 'application/json',
       body: JSON.stringify({
-        image: base64Image,
-        prompt: AI_PROMPTS[filter],
-        style_preset: AI_STYLE_PRESETS[filter],
+        image: imageBuffer.toString('base64'),
+        style_image: styleBuffer.toString('base64'),
+        style_strength: params.style_strength,
+        composition_fidelity: params.composition_fidelity,
+        change_strength: params.change_strength,
         output_format: 'png',
-        fidelity: 0.7,
       }),
     }),
   )
@@ -85,27 +94,46 @@ const applyAiFilter = async (imageBuffer: Buffer, filter: AiFilter): Promise<Buf
 const isAiFilter = (filter: Filter): filter is AiFilter =>
   filter === 'anime' || filter === 'popart' || filter === 'watercolor'
 
+/**
+ * Fetch the style reference image for AI filters.
+ * Falls back to null (triggering simple filter) if the image is missing in S3.
+ */
+const fetchStyleBuffer = async (filter: Filter, filterType: string): Promise<Buffer | null> => {
+  if (filterType !== 'ai' || !isAiFilter(filter)) return null
+  try {
+    return await getObject(`style-references/${filter}.jpg`)
+  } catch (err) {
+    console.warn(`[filter-apply] style-references/${filter}.jpg not found, falling back to simple filter:`, err)
+    return null
+  }
+}
+
+/** Max concurrent Bedrock calls — avoids Stability AI rate limit errors. */
+const bedRockLimit = pLimit(2)
+
 export const handler = async (event: PipelineInput): Promise<FilterApplyOutput> => {
   const { sessionId, filter, filterType, images } = event
 
   await notify(sessionId, 10, 'フィルター適用中...')
 
+  // Fetch style reference image once (reused for all photos in session).
+  // Returns null if missing — falls back to simple filter.
+  const styleBuffer = await fetchStyleBuffer(filter, filterType)
+
   const filteredImages = await Promise.all(
-    images.map(async (imageKey, i) => {
-      const imageBuffer = await getObject(imageKey)
+    images.map((imageKey, i) =>
+      bedRockLimit(async () => {
+        const imageBuffer = await getObject(imageKey)
 
-      let outputBuffer: Buffer
-      if (filterType === 'ai' && isAiFilter(filter)) {
-        outputBuffer = await applyAiFilter(imageBuffer, filter)
-      } else {
-        const pipeline = applySimpleFilter(sharp(imageBuffer), filter)
-        outputBuffer = await pipeline.png().toBuffer()
-      }
+        const outputBuffer = (filterType === 'ai' && isAiFilter(filter) && styleBuffer)
+          ? await applyAiFilter(imageBuffer, styleBuffer, filter)
+          : await applySimpleFilter(sharp(imageBuffer), filter).png().toBuffer()
 
-      const outputKey = `filtered/${sessionId}/${String(i + 1)}.png`
-      await putObject(outputKey, outputBuffer)
-      return outputKey
-    }),
+        const outputKey = `filtered/${sessionId}/${String(i + 1)}.png`
+        await putObject(outputKey, outputBuffer)
+        return outputKey
+      }),
+    ),
   )
 
   await notify(sessionId, 30, 'フィルター適用完了')
