@@ -75,7 +75,12 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
     await putSession(session)
 
-    return success({ sessionId, downloadCode, uploadUrls, websocketUrl }, 201)
+    // ClayCode画像アップロード用のPresigned URL
+    const claycodeUploadUrl = downloadCode
+      ? await generatePresignedUploadUrl(`claycode-images/${sessionId}.png`, 'image/png', 300)
+      : undefined
+
+    return success({ sessionId, downloadCode, uploadUrls, claycodeUploadUrl, websocketUrl }, 201)
   } catch (err) {
     console.error('session-create failed:', err)
     return error('Internal server error', 500)
