@@ -67,7 +67,7 @@ const applyAiFilter = async (imageBuffer: Buffer, styleBuffer: Buffer, filter: A
       contentType: 'application/json',
       accept: 'application/json',
       body: JSON.stringify({
-        image: imageBuffer.toString('base64'),
+        init_image: imageBuffer.toString('base64'),
         style_image: styleBuffer.toString('base64'),
         style_strength: params.style_strength,
         composition_fidelity: params.composition_fidelity,

@@ -195,6 +195,10 @@ export class AppStack extends cdk.Stack {
       resources: ['*'],
     }))
     api.filterApplyFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['aws-marketplace:ViewSubscriptions', 'aws-marketplace:Subscribe'],
+      resources: ['*'],
+    }))
+    api.filterApplyFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['execute-api:ManageConnections'],
       resources: [webSocketApiArn],
     }))
