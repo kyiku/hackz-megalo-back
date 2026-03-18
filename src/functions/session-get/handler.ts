@@ -20,6 +20,11 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       ? await generatePresignedDownloadUrl(session.downloadKey, 3600)
       : undefined
 
+    // Generate presigned URL for print-ready receipt image
+    const printImageUrl = session.printImageKey
+      ? await generatePresignedDownloadUrl(session.printImageKey, 3600)
+      : undefined
+
     return success({
       sessionId: session.sessionId,
       status: session.status,
@@ -27,6 +32,8 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       filter: session.filter,
       caption: session.caption,
       collageImageUrl,
+      printImageUrl,
+      downloadCode: session.downloadCode,
       createdAt: session.createdAt,
     })
   } catch (err) {
