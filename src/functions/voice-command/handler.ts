@@ -64,9 +64,13 @@ export const handler = async (event: VoiceCommandInput): Promise<VoiceCommandOut
     if (status === 'COMPLETED') {
       const uri = job.TranscriptionJob?.Transcript?.TranscriptFileUri
       if (uri) {
-        const response = await fetch(uri)
-        const data = await response.json() as { results: { transcripts: { transcript: string }[] } }
-        transcript = data.results.transcripts[0]?.transcript ?? ''
+        try {
+          const response = await fetch(uri)
+          const data = await response.json() as { results: { transcripts: { transcript: string }[] } }
+          transcript = data.results.transcripts[0]?.transcript ?? ''
+        } catch (err) {
+          console.error('Failed to fetch transcription result:', err)
+        }
       }
       break
     }

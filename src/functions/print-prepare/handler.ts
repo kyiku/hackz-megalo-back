@@ -99,18 +99,8 @@ const createFooterSvg = (width: number, filterName: string): Buffer => {
 /** Select a decorative border based on sentiment. */
 const createFrameSvg = (width: number, height: number, sentimentScore: number): Buffer => {
   // Border style varies by sentiment: positive=double, negative=dashed, neutral=single
-  let stroke: string
-  let strokeDasharray: string
-  if (sentimentScore >= 0.7) {
-    stroke = 'black'
-    strokeDasharray = 'none'
-  } else if (sentimentScore <= 0.3) {
-    stroke = 'black'
-    strokeDasharray = '8,4'
-  } else {
-    stroke = 'black'
-    strokeDasharray = 'none'
-  }
+  const stroke = 'black'
+  const strokeDasharray = sentimentScore <= 0.3 ? '8,4' : 'none'
 
   const inset = sentimentScore >= 0.7 ? 4 : 8
   const strokeWidth = sentimentScore >= 0.7 ? 3 : 2
