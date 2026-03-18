@@ -53,7 +53,14 @@ function createCommonProps(config: LambdaConfig) {
       minify: true,
       sourceMap: true,
       externalModules: ['@aws-sdk/*'],
-      ...(config.nodeModules ? { nodeModules: [...config.nodeModules] } : {}),
+      ...(config.nodeModules
+        ? {
+            nodeModules: [...config.nodeModules],
+            // Force Docker bundling so native addons (e.g. sharp) are compiled
+            // for linux-arm64 (Lambda Graviton2) instead of the host macOS arch.
+            forceDockerBundling: true,
+          }
+        : {}),
     },
   }
 }
@@ -93,6 +100,8 @@ export class Api extends Construct {
   // Yaji comment Lambda functions
   public readonly yajiCommentFastFn: NodejsFunction
   public readonly yajiCommentDeepFn: NodejsFunction
+  public readonly yajiTriggerFn: NodejsFunction
+  public readonly yajiFrameUrlFn: NodejsFunction
 
   // Pipeline complete Lambda function
   public readonly pipelineCompleteFn: NodejsFunction
@@ -291,6 +300,7 @@ export class Api extends Construct {
         S3_BUCKET: bucketName,
         CONNECTIONS_TABLE: connectionsTableName,
         WEBSOCKET_URL: websocketUrl,
+        DOWNLOAD_DOMAIN: 'https://main.d3aiwm7kus33pv.amplifyapp.com',
       },
     }))
 
@@ -335,6 +345,26 @@ export class Api extends Construct {
         S3_BUCKET: bucketName,
         CONNECTIONS_TABLE: connectionsTableName,
         WEBSOCKET_URL: websocketUrl,
+      },
+    }))
+
+    this.yajiFrameUrlFn = new NodejsFunction(this, 'YajiFrameUrlFn', createCommonProps({
+      name: 'yaji-frame-url',
+      timeout: Duration.seconds(10),
+      environment: {
+        S3_BUCKET: bucketName,
+        DYNAMODB_TABLE: sessionsTableName,
+      },
+    }))
+
+    this.yajiTriggerFn = new NodejsFunction(this, 'YajiTriggerFn', createCommonProps({
+      name: 'yaji-trigger',
+      timeout: Duration.seconds(10),
+      environment: {
+        S3_BUCKET: bucketName,
+        DYNAMODB_TABLE: sessionsTableName,
+        YAJI_FAST_FUNCTION_NAME: this.yajiCommentFastFn.functionName,
+        YAJI_DEEP_FUNCTION_NAME: this.yajiCommentDeepFn.functionName,
       },
     }))
 
@@ -413,7 +443,16 @@ export class Api extends Construct {
     // -------------------------------------------------------
     this.restApi = new RestApi(this, 'RestApi', {
       restApiName: `receipt-purikura-api-${stage}`,
-      deployOptions: { stageName: stage },
+      deployOptions: {
+        stageName: stage,
+        // Throttle yaji-frame-url: shooting sends 1 frame per 3s, cap at 1 req/s per account
+        methodOptions: {
+          '/api/session/{sessionId}/yaji-frame-url/POST': {
+            throttlingRateLimit: 1,
+            throttlingBurstLimit: 3,
+          },
+        },
+      },
       defaultCorsPreflightOptions: {
         allowOrigins: Cors.ALL_ORIGINS,
         allowMethods: Cors.ALL_METHODS,
@@ -452,5 +491,13 @@ export class Api extends Construct {
     // POST /api/session/{sessionId}/process
     const processResource = sessionIdResource.addResource('process')
     processResource.addMethod('POST', new LambdaIntegration(this.processStartFn))
+
+    // POST /api/session/{sessionId}/yaji
+    const yajiResource = sessionIdResource.addResource('yaji')
+    yajiResource.addMethod('POST', new LambdaIntegration(this.yajiTriggerFn))
+
+    // POST /api/session/{sessionId}/yaji-frame-url
+    const yajiFrameUrlResource = sessionIdResource.addResource('yaji-frame-url')
+    yajiFrameUrlResource.addMethod('POST', new LambdaIntegration(this.yajiFrameUrlFn))
   }
 }
