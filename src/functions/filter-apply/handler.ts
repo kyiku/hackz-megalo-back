@@ -63,7 +63,7 @@ const applyAiFilter = async (imageBuffer: Buffer, styleBuffer: Buffer, filter: A
 
   const response = await bedrock.send(
     new InvokeModelCommand({
-      modelId: 'stability.stable-style-transfer-v1:0',
+      modelId: 'us.stability.stable-style-transfer-v1:0',
       contentType: 'application/json',
       accept: 'application/json',
       body: JSON.stringify({

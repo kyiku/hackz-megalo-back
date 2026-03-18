@@ -187,7 +187,7 @@ describe('filter-apply handler (AI filters)', () => {
 
     expect(mockGetObject).toHaveBeenCalledWith('style-references/anime.jpg')
     const call = mockBedrockSend.mock.calls[0]?.[0] as { input: { modelId: string; body: string } }
-    expect(call.input.modelId).toBe('stability.stable-style-transfer-v1:0')
+    expect(call.input.modelId).toBe('us.stability.stable-style-transfer-v1:0')
   })
 
   it('should send style_image and style_strength parameters', async () => {
