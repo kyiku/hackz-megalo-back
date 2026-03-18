@@ -41,6 +41,8 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       (_, i) => `originals/${sessionId}/${String(i + 1)}.jpg`,
     )
 
+    console.log('[process-start] session.downloadCode:', session.downloadCode, 'type:', typeof session.downloadCode)
+
     const input: PipelineInput = {
       sessionId,
       createdAt: session.createdAt,
@@ -50,6 +52,8 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       bucket,
       ...(session.downloadCode !== undefined && { downloadCode: session.downloadCode }),
     }
+
+    console.log('[process-start] pipeline input downloadCode:', input.downloadCode)
 
     await sfn.send(
       new StartExecutionCommand({
