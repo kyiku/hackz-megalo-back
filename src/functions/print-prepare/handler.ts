@@ -58,34 +58,38 @@ const notify = async (sessionId: string, progress: number, message: string): Pro
   await sendToSession(sessionId, event).catch(() => undefined)
 }
 
-/** Create a text image using sharp's built-in text rendering (no external fonts needed). */
-const createTextImage = async (text: string, width: number, height: number, fontSize: number, color = 'black'): Promise<Buffer> => {
+/** Create a text image using sharp's Pango text API (works without Fontconfig). */
+const createTextBuffer = async (text: string, width: number, height: number, fontSize: number, color = 'black'): Promise<Buffer> => {
   const escaped = text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-  // Use SVG with embedded basic font stack
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${String(width)}" height="${String(height)}">
-    <text x="${String(width / 2)}" y="${String(Math.round(height * 0.7))}" font-size="${String(fontSize)}"
-      text-anchor="middle" fill="${color}" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif">${escaped}</text>
-  </svg>`
-  return sharp(Buffer.from(svg)).png().toBuffer()
+  const sizePt = fontSize * 1000
+  return sharp({
+    text: {
+      text: `<span foreground="${color}" size="${String(sizePt)}">${escaped}</span>`,
+      rgba: true,
+      width,
+      height,
+      align: 'centre',
+    },
+  }).png().toBuffer()
 }
 
 /** Create receipt header image. */
 const createHeaderImage = (width: number): Promise<Buffer> =>
-  createTextImage('Receipt Purikura', width, 50, 24)
+  createTextBuffer('Receipt Purikura', width, 50, 20)
 
 /** Create caption image. */
 const createCaptionImage = (text: string, width: number): Promise<Buffer> =>
-  createTextImage(text, width, 40, 16)
+  createTextBuffer(text, width, 40, 14)
 
 /** Create footer image with filter name + date. */
 const createFooterImage = async (width: number, filterName: string): Promise<Buffer> => {
   const now = new Date()
   const ts = `${String(now.getFullYear())}.${String(now.getMonth() + 1).padStart(2, '0')}.${String(now.getDate()).padStart(2, '0')}`
   const text = `${filterName}  ${ts}`
-  return createTextImage(text, width, 30, 12, 'gray')
+  return createTextBuffer(text, width, 30, 10, 'gray')
 }
 
 /** Select a decorative border based on sentiment. */
