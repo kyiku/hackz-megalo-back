@@ -48,6 +48,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       filter: session.filter,
       images,
       bucket,
+      ...(session.downloadCode !== undefined && { downloadCode: session.downloadCode }),
     }
 
     await sfn.send(
