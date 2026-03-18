@@ -34,7 +34,6 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       downloadCode: session.downloadCode,
       collageImageUrl,
       printImageUrl,
-      downloadCode: session.downloadCode,
       createdAt: session.createdAt,
     })
   } catch (err) {
