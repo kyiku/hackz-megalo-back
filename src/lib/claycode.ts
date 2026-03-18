@@ -170,10 +170,10 @@ export const generateClaycodeSvg = (downloadCode: string, size: number): string 
   const bits = textToBits(downloadCode)
   const root = bitsToTree(bits)
 
-  // Black canvas + white root (children alternate black/white)
-  const background: Rect = { x: 0, y: 0, w: size, h: size, color: 'black' }
-  const rects = [background, ...renderNode(root, 0, 0, size, size, 'white')]
+  // Black root on white SVG background: outer boundary is visible on white receipt paper.
+  // renderNode starts black (full square), alternates white/black at each level.
+  const rects = renderNode(root, 0, 0, size, size, 'black')
 
   const body = rects.map(rectToSvg).join('\n  ')
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${String(size)}" height="${String(size)}">\n  ${body}\n</svg>`
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${String(size)}" height="${String(size)}" style="background:white">\n  ${body}\n</svg>`
 }

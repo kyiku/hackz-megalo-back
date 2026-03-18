@@ -46,6 +46,7 @@ describe('voice-command handler', () => {
 
     // Mock fetch for transcript result
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
       json: () => Promise.resolve({
         results: { transcripts: [{ transcript: '撮って' }] },
       }),
@@ -61,6 +62,7 @@ describe('voice-command handler', () => {
 
   it('should return unknown for non-matching transcript', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
       json: () => Promise.resolve({
         results: { transcripts: [{ transcript: 'こんにちは' }] },
       }),
@@ -69,6 +71,19 @@ describe('voice-command handler', () => {
     const result = await handler(baseInput)
 
     expect(result.command).toBe('unknown')
+  })
+
+  it('should return unknown command when fetch returns HTTP error', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 403,
+      statusText: 'Forbidden',
+    }))
+
+    const result = await handler(baseInput)
+
+    expect(result.command).toBe('unknown')
+    expect(result.transcript).toBe('')
   })
 
   it('should start transcription job with correct params', async () => {

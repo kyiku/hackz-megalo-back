@@ -66,8 +66,12 @@ export const handler = async (event: VoiceCommandInput): Promise<VoiceCommandOut
       if (uri) {
         try {
           const response = await fetch(uri)
-          const data = await response.json() as { results: { transcripts: { transcript: string }[] } }
-          transcript = data.results.transcripts[0]?.transcript ?? ''
+          if (!response.ok) {
+            console.error('Failed to fetch transcription result: HTTP', response.status, response.statusText)
+          } else {
+            const data = await response.json() as { results: { transcripts: { transcript: string }[] } }
+            transcript = data.results.transcripts[0]?.transcript ?? ''
+          }
         } catch (err) {
           console.error('Failed to fetch transcription result:', err)
         }
