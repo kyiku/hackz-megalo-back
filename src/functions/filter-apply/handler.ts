@@ -42,43 +42,53 @@ const notify = async (sessionId: string, progress: number, message: string): Pro
   await sendToSession(sessionId, event).catch(() => undefined)
 }
 
-/**
- * Prompts for each AI filter style.
- * Used by stable-image-core-v1 image-to-image mode.
- */
-const AI_PROMPTS: Record<AiFilter, string> = {
-  anime: 'anime style illustration, vibrant colors, cel shading, studio ghibli',
-  popart: 'pop art style, bold outlines, halftone dots, vivid flat colors, Andy Warhol',
-  watercolor: 'watercolor painting, soft wet brushstrokes, artistic, flowing pastel colors',
+interface StyleParams {
+  readonly compositionFidelity: number
+  readonly styleStrength: number
+  readonly changeStrength: number
 }
 
 /**
- * Image-to-image strength (0.0–1.0).
- * Higher = stronger style transformation, lower = closer to original.
+ * Per-filter tuning for stable-style-transfer-v1:0.
+ * composition_fidelity: how much to preserve original composition (0.0–1.0)
+ * style_strength: how strongly to apply style (0.0–1.0)
+ * change_strength: overall transformation intensity (0.0–1.0)
  */
-const AI_STRENGTH = 0.8
+const AI_STYLE_PARAMS: Record<AiFilter, StyleParams> = {
+  anime: { compositionFidelity: 0.9, styleStrength: 0.9, changeStrength: 0.9 },
+  popart: { compositionFidelity: 0.85, styleStrength: 0.95, changeStrength: 0.9 },
+  watercolor: { compositionFidelity: 0.9, styleStrength: 0.85, changeStrength: 0.8 },
+}
 
 interface StabilityResponse {
   readonly images: readonly string[]
 }
 
+/** Fetch style reference image from S3. */
+const fetchStyleBuffer = async (filter: AiFilter): Promise<Buffer> =>
+  getObject(`style-references/${filter}.jpg`)
+
 /**
- * Apply AI style transfer via Stability AI stable-image-core on Bedrock.
- * Uses image-to-image mode — no external style reference images required.
+ * Apply AI style transfer via Stability AI stable-style-transfer-v1:0 on Bedrock.
+ * Uses init_image (user photo) + style_image (S3 reference) for image-to-image style transfer.
  */
 const applyAiFilter = async (imageBuffer: Buffer, filter: AiFilter): Promise<Buffer> => {
-  const base64Image = imageBuffer.toString('base64')
+  const [styleBuffer] = await Promise.all([fetchStyleBuffer(filter)])
+  const initImage = imageBuffer.toString('base64')
+  const styleImage = styleBuffer.toString('base64')
+  const { compositionFidelity, styleStrength, changeStrength } = AI_STYLE_PARAMS[filter]
 
   const response = await bedrock.send(
     new InvokeModelCommand({
-      modelId: 'us.stability.stable-image-core-v1:0',
+      modelId: 'us.stability.stable-style-transfer-v1:0',
       contentType: 'application/json',
       accept: 'application/json',
       body: JSON.stringify({
-        prompt: AI_PROMPTS[filter],
-        image: base64Image,
-        mode: 'image-to-image',
-        strength: AI_STRENGTH,
+        init_image: initImage,
+        style_image: styleImage,
+        composition_fidelity: compositionFidelity,
+        style_strength: styleStrength,
+        change_strength: changeStrength,
         output_format: 'png',
       }),
     }),

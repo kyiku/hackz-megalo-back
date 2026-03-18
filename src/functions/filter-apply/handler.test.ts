@@ -148,9 +148,9 @@ describe('filter-apply handler (AI filters)', () => {
       filter: 'anime',
     })
 
-    // No style reference images — only the 2 photo images
-    expect(mockGetObject).toHaveBeenCalledTimes(2)
-    expect(mockGetObject).not.toHaveBeenCalledWith(expect.stringContaining('style-references'))
+    // 2 photo images + 2 style reference fetches (1 per image)
+    expect(mockGetObject).toHaveBeenCalledTimes(4)
+    expect(mockGetObject).toHaveBeenCalledWith('style-references/anime.jpg')
     expect(mockBedrockSend).toHaveBeenCalledTimes(2)
     expect(mockSharpInstance.blur).not.toHaveBeenCalled()
     expect(result.filteredImages).toHaveLength(2)
@@ -163,7 +163,8 @@ describe('filter-apply handler (AI filters)', () => {
       filter: 'popart',
     })
 
-    expect(mockGetObject).toHaveBeenCalledTimes(2)
+    expect(mockGetObject).toHaveBeenCalledTimes(4)
+    expect(mockGetObject).toHaveBeenCalledWith('style-references/popart.jpg')
     expect(mockBedrockSend).toHaveBeenCalledTimes(2)
   })
 
@@ -174,11 +175,12 @@ describe('filter-apply handler (AI filters)', () => {
       filter: 'watercolor',
     })
 
-    expect(mockGetObject).toHaveBeenCalledTimes(2)
+    expect(mockGetObject).toHaveBeenCalledTimes(4)
+    expect(mockGetObject).toHaveBeenCalledWith('style-references/watercolor.jpg')
     expect(mockBedrockSend).toHaveBeenCalledTimes(2)
   })
 
-  it('should use correct model ID (stable-image-core-v1)', async () => {
+  it('should use correct model ID (stable-style-transfer-v1)', async () => {
     await handler({
       ...baseInput,
       filterType: 'ai',
@@ -186,10 +188,10 @@ describe('filter-apply handler (AI filters)', () => {
     })
 
     const call = mockBedrockSend.mock.calls[0]?.[0] as { input: { modelId: string; body: string } }
-    expect(call.input.modelId).toBe('us.stability.stable-image-core-v1:0')
+    expect(call.input.modelId).toBe('us.stability.stable-style-transfer-v1:0')
   })
 
-  it('should send image-to-image mode and strength parameters', async () => {
+  it('should send init_image, style_image and style transfer parameters', async () => {
     await handler({
       ...baseInput,
       filterType: 'ai',
@@ -198,13 +200,16 @@ describe('filter-apply handler (AI filters)', () => {
 
     const call = mockBedrockSend.mock.calls[0]?.[0] as { input: { body: string } }
     const body = JSON.parse(call.input.body) as Record<string, unknown>
-    expect(body.mode).toBe('image-to-image')
-    expect(body.strength).toBeTypeOf('number')
-    expect(body.image).toBeTypeOf('string')
-    expect(body.prompt).toBeTypeOf('string')
-    // fidelity/style_preset must not be sent
-    expect(body.fidelity).toBeUndefined()
-    expect(body.style_preset).toBeUndefined()
+    expect(body.init_image).toBeTypeOf('string')
+    expect(body.style_image).toBeTypeOf('string')
+    expect(body.composition_fidelity).toBeTypeOf('number')
+    expect(body.style_strength).toBeTypeOf('number')
+    expect(body.change_strength).toBeTypeOf('number')
+    // old image-to-image params must not be sent
+    expect(body.mode).toBeUndefined()
+    expect(body.strength).toBeUndefined()
+    expect(body.image).toBeUndefined()
+    expect(body.prompt).toBeUndefined()
   })
 
   it('should save AI-filtered images to S3', async () => {
