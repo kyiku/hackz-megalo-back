@@ -58,6 +58,7 @@ describe('session-get handler', () => {
       status: 'completed',
       photoCount: 4,
       caption: '楽しい思い出！',
+      downloadCode: '12345',
       downloadKey: 'downloads/test-uuid.png',
       ttl: 0,
     }
@@ -71,8 +72,27 @@ describe('session-get handler', () => {
     expect(body.status).toBe('completed')
     expect(body.filterType).toBe('simple')
     expect(body.caption).toBe('楽しい思い出！')
+    expect(body.downloadCode).toBe('12345')
     expect(body.collageImageUrl).toBe('https://presigned/download-url')
     expect(body.createdAt).toBe('2026-03-16T14:30:00Z')
+  })
+
+  it('should return downloadCode as undefined when not present in session', async () => {
+    const session = {
+      sessionId: 'test-uuid',
+      createdAt: '2026-03-16T14:30:00Z',
+      filterType: 'simple',
+      filter: 'beauty',
+      status: 'uploading',
+      photoCount: 4,
+      ttl: 0,
+    }
+    mockGetSession.mockResolvedValueOnce(session)
+
+    const response = await invoke(createEvent('test-uuid'))
+    const body = JSON.parse(response.body) as Record<string, unknown>
+
+    expect(body.downloadCode).toBeUndefined()
   })
 
   it('should return session without collageImageUrl when not yet processed', async () => {
