@@ -44,6 +44,11 @@ vi.mock('@aws-sdk/client-bedrock-runtime', () => ({
   },
 }))
 
+// p-limit passthrough mock: concurrency limit is tested via Bedrock call count in integration
+vi.mock('p-limit', () => ({
+  default: () => (fn: () => unknown) => fn(),
+}))
+
 import { handler } from './handler'
 import type { PipelineInput } from '../../lib/types'
 
@@ -215,5 +220,22 @@ describe('filter-apply handler (AI filters)', () => {
 
     expect(mockBedrockSend).not.toHaveBeenCalled()
     expect(mockSharpInstance.png).toHaveBeenCalled()
+  })
+
+  it('should fall back to simple filter when style reference image is missing in S3', async () => {
+    // style-references/anime.jpg fetch fails, photo fetches succeed
+    mockGetObject
+      .mockRejectedValueOnce(new Error('NoSuchKey: style-references/anime.jpg'))
+      .mockResolvedValue(Buffer.from([255, 0, 0]))
+
+    const result = await handler({
+      ...baseInput,
+      filterType: 'ai',
+      filter: 'anime',
+    })
+
+    expect(mockBedrockSend).not.toHaveBeenCalled()
+    expect(mockSharpInstance.png).toHaveBeenCalled()
+    expect(result.filteredImages).toHaveLength(2)
   })
 })
