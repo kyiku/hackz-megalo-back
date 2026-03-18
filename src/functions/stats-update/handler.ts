@@ -77,10 +77,11 @@ export const handler: DynamoDBStreamHandler = async (event) => {
         }),
       )
       const item = result.Item ?? {}
+      const toNum = (v: unknown): number => (typeof v === 'number' ? v : 0)
       await publishToAppSync({
-        totalSessions: Number(item.totalSessions) || 0,
-        completedSessions: (Number(item.completed) || 0) + (Number(item.printed) || 0),
-        failedSessions: Number(item.failed) || 0,
+        totalSessions: toNum(item.totalSessions),
+        completedSessions: toNum(item.completed) + toNum(item.printed),
+        failedSessions: toNum(item.failed),
       })
     } catch (err) {
       console.error('Failed to read stats for AppSync publish:', err)
