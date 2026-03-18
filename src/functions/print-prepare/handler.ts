@@ -121,6 +121,9 @@ const CLAYCODE_SIZE = 200
 export const handler = async (event: PrintPrepareInput): Promise<PrintPrepareOutput> => {
   const { sessionId, collageKey, caption, filter, sentimentScore, downloadCode } = event
 
+  console.log('[print-prepare] input event keys:', Object.keys(event))
+  console.log('[print-prepare] downloadCode:', downloadCode, 'type:', typeof downloadCode)
+
   await notify(sessionId, 60, '印刷データ準備中...')
 
   const collageBuffer = await getObject(collageKey)
