@@ -110,7 +110,7 @@ export const handler = async (event: PipelineInput): Promise<FilterApplyOutput> 
         const imageBuffer = await getObject(imageKey)
 
         const outputBuffer = isAi
-          ? await applyAiFilter(imageBuffer, filter as AiFilter)
+          ? await applyAiFilter(imageBuffer, filter)
           : await applySimpleFilter(sharp(imageBuffer), filter).png().toBuffer()
 
         const outputKey = `filtered/${sessionId}/${String(i + 1)}.png`
