@@ -58,4 +58,6 @@ export const ShootingSyncSchema = z.object({
   layers: z.string().optional(),
   effect: z.string().nullable().optional(),
   photos: z.array(z.string()).optional(),
+  photoData: z.string().optional(),
+  photoCount: z.number().optional(),
 })
