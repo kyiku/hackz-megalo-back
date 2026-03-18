@@ -40,6 +40,21 @@ export const getSession = async (
   return result.Items?.[0] as Session | undefined
 }
 
+export const getSessionByDownloadCode = async (
+  downloadCode: string,
+): Promise<Session | undefined> => {
+  const result = await docClient.send(
+    new QueryCommand({
+      TableName: sessionsTable(),
+      IndexName: 'downloadCode-index',
+      KeyConditionExpression: 'downloadCode = :code',
+      ExpressionAttributeValues: { ':code': downloadCode },
+      Limit: 1,
+    }),
+  )
+  return result.Items?.[0] as Session | undefined
+}
+
 export const putSession = async (session: Session): Promise<void> => {
   await docClient.send(
     new PutCommand({

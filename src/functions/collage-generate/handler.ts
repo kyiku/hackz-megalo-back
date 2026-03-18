@@ -3,7 +3,6 @@ import { getObject, putObject } from '../../lib/s3'
 import { sendToSession } from '../../lib/websocket'
 import type { PipelineInput, ProgressEvent } from '../../lib/types'
 
-/** Bounding box from face-detection (Rekognition normalized 0-1 values). */
 interface FaceBoundingBox {
   readonly width: number
   readonly height: number
@@ -28,7 +27,7 @@ interface CollageOutput extends CollageInput {
   readonly collageKey: string
 }
 
-const CANVAS_SIZE = 576
+const CANVAS_WIDTH = 576
 const PADDING = 10
 const GAP = 6
 
@@ -75,45 +74,59 @@ const notify = async (sessionId: string, progress: number, message: string): Pro
   await sendToSession(sessionId, event).catch(() => undefined)
 }
 
-/** Get grid positions for 1-4 images. */
-const getLayout = (count: number): { cellSize: number; positions: { left: number; top: number }[] } => {
-  if (count === 1) {
-    const cellSize = CANVAS_SIZE - PADDING * 2
-    return { cellSize, positions: [{ left: PADDING, top: PADDING }] }
-  }
-  if (count === 2) {
-    return {
-      cellSize: CELL_SIZE_2x2,
-      positions: [
-        { left: PADDING, top: Math.floor((CANVAS_SIZE - CELL_SIZE_2x2) / 2) },
-        { left: PADDING + CELL_SIZE_2x2 + GAP, top: Math.floor((CANVAS_SIZE - CELL_SIZE_2x2) / 2) },
-      ],
+/**
+ * Resize image to fit cell dimensions, maintaining aspect ratio.
+ * Center-crop to fill the cell, optionally centering on face.
+ */
+const smartCropToCell = async (
+  buffer: Buffer,
+  cellWidth: number,
+  cellHeight: number,
+  face?: FaceBoundingBox,
+): Promise<Buffer> => {
+  const image = sharp(buffer)
+  const meta = await image.metadata()
+  const imgW = meta.width ? meta.width : cellWidth
+  const imgH = meta.height ? meta.height : cellHeight
+
+  const targetRatio = cellWidth / cellHeight
+  const imgRatio = imgW / imgH
+
+  let cropWidth: number
+  let cropHeight: number
+  let left: number
+  let top: number
+
+  if (imgRatio > targetRatio) {
+    // Image is wider than target: crop sides
+    cropHeight = imgH
+    cropWidth = Math.round(imgH * targetRatio)
+    top = 0
+    if (face) {
+      const faceCenterX = Math.round((face.left + face.width / 2) * imgW)
+      left = Math.max(0, Math.min(imgW - cropWidth, faceCenterX - Math.floor(cropWidth / 2)))
+    } else {
+      left = Math.floor((imgW - cropWidth) / 2)
+    }
+  } else {
+    // Image is taller than target: crop top/bottom
+    cropWidth = imgW
+    cropHeight = Math.round(imgW / targetRatio)
+    left = 0
+    if (face) {
+      const faceCenterY = Math.round((face.top + face.height / 2) * imgH)
+      top = Math.max(0, Math.min(imgH - cropHeight, faceCenterY - Math.floor(cropHeight / 2)))
+    } else {
+      top = Math.floor((imgH - cropHeight) / 2)
     }
   }
-  if (count === 3) {
-    return {
-      cellSize: CELL_SIZE_2x2,
-      positions: [
-        { left: Math.floor((CANVAS_SIZE - CELL_SIZE_2x2) / 2), top: PADDING },
-        { left: PADDING, top: PADDING + CELL_SIZE_2x2 + GAP },
-        { left: PADDING + CELL_SIZE_2x2 + GAP, top: PADDING + CELL_SIZE_2x2 + GAP },
-      ],
-    }
-  }
-  return {
-    cellSize: CELL_SIZE_2x2,
-    positions: [
-      { left: PADDING, top: PADDING },
-      { left: PADDING + CELL_SIZE_2x2 + GAP, top: PADDING },
-      { left: PADDING, top: PADDING + CELL_SIZE_2x2 + GAP },
-      { left: PADDING + CELL_SIZE_2x2 + GAP, top: PADDING + CELL_SIZE_2x2 + GAP },
-    ],
-  }
+
+  return image
+    .extract({ left, top, width: cropWidth, height: cropHeight })
+    .resize(cellWidth, cellHeight)
+    .toBuffer()
 }
 
-/**
- * Find the primary (highest confidence) face bounding box for a given image index.
- */
 const findPrimaryFace = (
   faces: readonly FaceResult[] | undefined,
   imageIndex: number,
@@ -129,34 +142,101 @@ export const handler = async (event: CollageInput): Promise<CollageOutput> => {
 
   await notify(sessionId, 40, 'コラージュ生成中...')
 
-  const { cellSize, positions } = getLayout(filteredImages.length)
+  // Detect photo orientation from first image
+  const firstBuffer = await getObject(filteredImages[0] ?? '')
+  const firstMeta = await sharp(firstBuffer).metadata()
+  const firstW = firstMeta.width ? firstMeta.width : 1
+  const firstH = firstMeta.height ? firstMeta.height : 1
+  const photoRatio = firstH / firstW // > 1 = portrait, < 1 = landscape
+
+  // Cell dimensions maintain original photo ratio
+  const cellWidth = Math.floor((CANVAS_WIDTH - PADDING * 2 - GAP) / 2)
+  const cellHeight = Math.round(cellWidth * photoRatio)
+
+  // Canvas height adapts to photo ratio
+  const canvasHeight = cellHeight * 2 + PADDING * 2 + GAP
+
+  const count = filteredImages.length
+  let positions: { left: number; top: number }[]
+
+  if (count === 1) {
+    const singleWidth = CANVAS_WIDTH - PADDING * 2
+    const singleHeight = Math.round(singleWidth * photoRatio)
+    positions = [{ left: PADDING, top: PADDING }]
+    const cellBuffers = await Promise.all(
+      filteredImages.map(async (key) => {
+        const buffer = await getObject(key)
+        return smartCropToCell(buffer, singleWidth, singleHeight)
+      }),
+    )
+    const canvas = sharp({
+      create: {
+        width: CANVAS_WIDTH,
+        height: singleHeight + PADDING * 2,
+        channels: 3 as const,
+        background: { r: 255, g: 255, b: 255 },
+      },
+    })
+    const collageBuffer = await canvas
+      .composite(cellBuffers.map((input, i) => ({
+        input,
+        left: positions[i]?.left ?? PADDING,
+        top: positions[i]?.top ?? PADDING,
+      })))
+      .png()
+      .toBuffer()
+    const collageKey = `collages/${sessionId}.png`
+    await putObject(collageKey, collageBuffer)
+    await notify(sessionId, 50, 'コラージュ生成完了')
+    return { ...event, collageKey }
+  }
+
+  // 2x2 layout (for 2, 3, or 4 photos)
+  if (count === 2) {
+    positions = [
+      { left: PADDING, top: Math.floor((canvasHeight - cellHeight) / 2) },
+      { left: PADDING + cellWidth + GAP, top: Math.floor((canvasHeight - cellHeight) / 2) },
+    ]
+  } else if (count === 3) {
+    positions = [
+      { left: Math.floor((CANVAS_WIDTH - cellWidth) / 2), top: PADDING },
+      { left: PADDING, top: PADDING + cellHeight + GAP },
+      { left: PADDING + cellWidth + GAP, top: PADDING + cellHeight + GAP },
+    ]
+  } else {
+    positions = [
+      { left: PADDING, top: PADDING },
+      { left: PADDING + cellWidth + GAP, top: PADDING },
+      { left: PADDING, top: PADDING + cellHeight + GAP },
+      { left: PADDING + cellWidth + GAP, top: PADDING + cellHeight + GAP },
+    ]
+  }
 
   const cellBuffers = await Promise.all(
     filteredImages.map(async (key, i) => {
       const buffer = await getObject(key)
       const face = findPrimaryFace(faces, i)
-      return smartCropToSquare(buffer, cellSize, face)
+      return smartCropToCell(buffer, cellWidth, cellHeight, face)
     }),
   )
 
-  const compositeInputs = cellBuffers.map((input, i) => ({
-    input,
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    left: positions[i]!.left,
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    top: positions[i]!.top,
-  }))
-
   const canvas = sharp({
     create: {
-      width: CANVAS_SIZE,
-      height: CANVAS_SIZE,
+      width: CANVAS_WIDTH,
+      height: canvasHeight,
       channels: 3 as const,
       background: { r: 255, g: 255, b: 255 },
     },
   })
 
-  const collageBuffer = await canvas.composite(compositeInputs).png().toBuffer()
+  const collageBuffer = await canvas
+    .composite(cellBuffers.map((input, i) => ({
+      input,
+      left: positions[i]?.left ?? PADDING,
+      top: positions[i]?.top ?? PADDING,
+    })))
+    .png()
+    .toBuffer()
 
   const collageKey = `collages/${sessionId}.png`
   await putObject(collageKey, collageBuffer)
