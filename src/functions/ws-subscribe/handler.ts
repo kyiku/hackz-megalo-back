@@ -18,7 +18,8 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     await updateConnection(connectionId, { sessionId: parsed.data.sessionId })
 
     return { statusCode: 200, body: 'Subscribed' }
-  } catch {
+  } catch (err) {
+    console.error('[ws-subscribe] handler error:', err)
     return { statusCode: 500, body: 'Internal server error' }
   }
 }

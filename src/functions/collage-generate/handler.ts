@@ -45,6 +45,7 @@ const smartCropToSquare = async (
 ): Promise<Buffer> => {
   const image = sharp(buffer)
   const { width: imgW, height: imgH } = await image.metadata()
+  if (!imgW || !imgH) throw new Error('Invalid image: missing dimensions')
   const cropSize = Math.min(imgW, imgH)
 
   let left: number
