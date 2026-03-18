@@ -65,7 +65,7 @@ export const handler = async (event: YajiInput): Promise<YajiInput> => {
         type: 'yajiComment',
         data: {
           text,
-          emotion: 'deep',
+          emotion: 'UNKNOWN',
           lane: 'deep',
           timestamp: Math.floor(Date.now() / 1000),
         },
