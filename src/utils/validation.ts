@@ -48,7 +48,7 @@ export const WebrtcIceSchema = z.object({
 
 export const ShootingSyncSchema = z.object({
   roomId: z.string().min(1),
-  event: z.enum(['shooting_start', 'countdown', 'shutter', 'shooting_complete', 'phase_change', 'filter_select', 'doodle_sync']),
+  event: z.enum(['shooting_start', 'countdown', 'shutter', 'shooting_complete', 'phase_change', 'filter_select', 'doodle_sync', 'ar_sync', 'photo_sync']),
   sessionId: z.string().optional(),
   totalPhotos: z.number().optional(),
   photoIndex: z.number().optional(),
@@ -56,4 +56,6 @@ export const ShootingSyncSchema = z.object({
   phase: z.string().optional(),
   filterId: z.string().optional(),
   layers: z.string().optional(),
+  effect: z.string().nullable().optional(),
+  photos: z.array(z.string()).optional(),
 })
