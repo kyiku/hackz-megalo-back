@@ -20,33 +20,60 @@ interface YajiInput {
   readonly images: readonly string[]
 }
 
-export const handler = async (event: YajiInput): Promise<YajiInput> => {
-  const { sessionId, bucket, images } = event
+// EventBridge S3 Object Created event (yaji-frames/{sessionId}/{timestamp}.jpg)
+interface EventBridgeS3Event {
+  readonly source: 'aws.s3'
+  readonly detail: {
+    readonly bucket: { readonly name: string }
+    readonly object: { readonly key: string }
+  }
+}
 
-  const firstImage = images[0]
-  if (!firstImage) return event
+type HandlerInput = YajiInput | EventBridgeS3Event
+
+const isEventBridge = (e: HandlerInput): e is EventBridgeS3Event =>
+  'source' in e
+
+export const handler = async (event: HandlerInput): Promise<void> => {
+  let sessionId: string
+  let bucket: string
+  let imageKey: string
+
+  if (isEventBridge(event)) {
+    bucket = event.detail.bucket.name
+    imageKey = event.detail.object.key
+    // key format: yaji-frames/{sessionId}/{timestamp}.jpg
+    sessionId = imageKey.split('/')[1] ?? ''
+    if (!sessionId) return
+  } else {
+    const firstImage = event.images[0]
+    if (!firstImage) return
+    sessionId = event.sessionId
+    bucket = event.bucket
+    imageKey = firstImage
+  }
 
   const response = await rekognition.send(
     new DetectFacesCommand({
-      Image: { S3Object: { Bucket: bucket, Name: firstImage } },
+      Image: { S3Object: { Bucket: bucket, Name: imageKey } },
       Attributes: ['ALL'],
     }),
   )
 
   const faces = response.FaceDetails ?? []
-  if (faces.length === 0) return event
+  if (faces.length === 0) return
 
   const topEmotion = [...(faces[0]?.Emotions ?? [])].sort(
     (a, b) => (b.Confidence ?? 0) - (a.Confidence ?? 0),
   )[0]
 
-  if (!topEmotion?.Type) return event
+  if (!topEmotion?.Type) return
 
   const templates = EMOTION_TEMPLATES[topEmotion.Type] ?? EMOTION_TEMPLATES.CALM
-  if (!templates || templates.length === 0) return event
+  if (!templates || templates.length === 0) return
 
   const text = templates[Math.floor(Math.random() * templates.length)]
-  if (!text) return event
+  if (!text) return
 
   await sendToSession(sessionId, {
     type: 'yajiComment',
@@ -57,6 +84,4 @@ export const handler = async (event: YajiInput): Promise<YajiInput> => {
       timestamp: Math.floor(Date.now() / 1000),
     },
   })
-
-  return event
 }

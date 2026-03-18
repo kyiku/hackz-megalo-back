@@ -1,6 +1,8 @@
 import * as cdk from 'aws-cdk-lib'
 import * as iam from 'aws-cdk-lib/aws-iam'
 import * as cr from 'aws-cdk-lib/custom-resources'
+import * as events from 'aws-cdk-lib/aws-events'
+import * as targets from 'aws-cdk-lib/aws-events-targets'
 import { StartingPosition } from 'aws-cdk-lib/aws-lambda'
 import { DynamoEventSource } from 'aws-cdk-lib/aws-lambda-event-sources'
 import * as appsync from 'aws-cdk-lib/aws-appsync'
@@ -246,6 +248,24 @@ export class AppStack extends cdk.Stack {
       actions: ['execute-api:ManageConnections'],
       resources: [webSocketApiArn],
     }))
+
+    // yaji-frame-url: DynamoDB GetItem (sessions), S3 PutObject (yaji-frames/)
+    storage.sessionsTable.grantReadData(api.yajiFrameUrlFn)
+    storage.bucket.grantPut(api.yajiFrameUrlFn)
+
+    // EventBridge: yaji-frames/ upload → yaji-comment-fast (リアルタイムフレーム分析)
+    new events.Rule(this, 'YajiFrameRule', {
+      ruleName: `receipt-purikura-yaji-frame-${stage}`,
+      eventPattern: {
+        source: ['aws.s3'],
+        detailType: ['Object Created'],
+        detail: {
+          bucket: { name: [storage.bucket.bucketName] },
+          object: { key: [{ prefix: 'yaji-frames/' }] },
+        },
+      },
+      targets: [new targets.LambdaFunction(api.yajiCommentFastFn)],
+    })
 
     // yaji-trigger: DynamoDB GetItem (sessions), Lambda InvokeFunction on yaji Lambdas
     storage.sessionsTable.grantReadData(api.yajiTriggerFn)

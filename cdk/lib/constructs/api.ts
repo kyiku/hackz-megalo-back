@@ -101,6 +101,7 @@ export class Api extends Construct {
   public readonly yajiCommentFastFn: NodejsFunction
   public readonly yajiCommentDeepFn: NodejsFunction
   public readonly yajiTriggerFn: NodejsFunction
+  public readonly yajiFrameUrlFn: NodejsFunction
 
   // Pipeline complete Lambda function
   public readonly pipelineCompleteFn: NodejsFunction
@@ -347,6 +348,15 @@ export class Api extends Construct {
       },
     }))
 
+    this.yajiFrameUrlFn = new NodejsFunction(this, 'YajiFrameUrlFn', createCommonProps({
+      name: 'yaji-frame-url',
+      timeout: Duration.seconds(10),
+      environment: {
+        S3_BUCKET: bucketName,
+        DYNAMODB_TABLE: sessionsTableName,
+      },
+    }))
+
     this.yajiTriggerFn = new NodejsFunction(this, 'YajiTriggerFn', createCommonProps({
       name: 'yaji-trigger',
       timeout: Duration.seconds(10),
@@ -476,5 +486,9 @@ export class Api extends Construct {
     // POST /api/session/{sessionId}/yaji
     const yajiResource = sessionIdResource.addResource('yaji')
     yajiResource.addMethod('POST', new LambdaIntegration(this.yajiTriggerFn))
+
+    // POST /api/session/{sessionId}/yaji-frame-url
+    const yajiFrameUrlResource = sessionIdResource.addResource('yaji-frame-url')
+    yajiFrameUrlResource.addMethod('POST', new LambdaIntegration(this.yajiFrameUrlFn))
   }
 }
