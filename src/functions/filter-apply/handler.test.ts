@@ -197,6 +197,35 @@ describe('filter-apply handler (AI filters)', () => {
     expect(mockBedrockSend).toHaveBeenCalledTimes(2)
   })
 
+  it('should use correct model ID (stable-image-core-v1)', async () => {
+    await handler({
+      ...baseInput,
+      filterType: 'ai',
+      filter: 'anime',
+    })
+
+    const call = mockBedrockSend.mock.calls[0]?.[0] as { input: { modelId: string; body: string } }
+    expect(call.input.modelId).toBe('us.stability.stable-image-core-v1:0')
+  })
+
+  it('should send image-to-image mode and strength parameters', async () => {
+    await handler({
+      ...baseInput,
+      filterType: 'ai',
+      filter: 'anime',
+    })
+
+    const call = mockBedrockSend.mock.calls[0]?.[0] as { input: { body: string } }
+    const body = JSON.parse(call.input.body) as Record<string, unknown>
+    expect(body['mode']).toBe('image-to-image')
+    expect(body['strength']).toBeTypeOf('number')
+    expect(body['image']).toBeTypeOf('string')
+    expect(body['prompt']).toBeTypeOf('string')
+    // fidelity/style_preset must not be sent
+    expect(body['fidelity']).toBeUndefined()
+    expect(body['style_preset']).toBeUndefined()
+  })
+
   it('should save AI-filtered images to S3', async () => {
     await handler({
       ...baseInput,
