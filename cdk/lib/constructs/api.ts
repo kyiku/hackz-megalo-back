@@ -106,6 +106,7 @@ export class Api extends Construct {
   public readonly yajiCommentFastFn: NodejsFunction
   public readonly yajiCommentDeepFn: NodejsFunction
   public readonly yajiTriggerFn: NodejsFunction
+  public readonly yajiFrameUrlFn: NodejsFunction
 
   // Pipeline complete Lambda function
   public readonly pipelineCompleteFn: NodejsFunction
@@ -352,6 +353,15 @@ export class Api extends Construct {
       },
     }))
 
+    this.yajiFrameUrlFn = new NodejsFunction(this, 'YajiFrameUrlFn', createCommonProps({
+      name: 'yaji-frame-url',
+      timeout: Duration.seconds(10),
+      environment: {
+        S3_BUCKET: bucketName,
+        DYNAMODB_TABLE: sessionsTableName,
+      },
+    }))
+
     this.yajiTriggerFn = new NodejsFunction(this, 'YajiTriggerFn', createCommonProps({
       name: 'yaji-trigger',
       timeout: Duration.seconds(10),
@@ -438,7 +448,16 @@ export class Api extends Construct {
     // -------------------------------------------------------
     this.restApi = new RestApi(this, 'RestApi', {
       restApiName: `receipt-purikura-api-${stage}`,
-      deployOptions: { stageName: stage },
+      deployOptions: {
+        stageName: stage,
+        // Throttle yaji-frame-url: shooting sends 1 frame per 3s, cap at 1 req/s per account
+        methodOptions: {
+          '/api/session/{sessionId}/yaji-frame-url/POST': {
+            throttlingRateLimit: 1,
+            throttlingBurstLimit: 3,
+          },
+        },
+      },
       defaultCorsPreflightOptions: {
         allowOrigins: Cors.ALL_ORIGINS,
         allowMethods: Cors.ALL_METHODS,
@@ -481,5 +500,9 @@ export class Api extends Construct {
     // POST /api/session/{sessionId}/yaji
     const yajiResource = sessionIdResource.addResource('yaji')
     yajiResource.addMethod('POST', new LambdaIntegration(this.yajiTriggerFn))
+
+    // POST /api/session/{sessionId}/yaji-frame-url
+    const yajiFrameUrlResource = sessionIdResource.addResource('yaji-frame-url')
+    yajiFrameUrlResource.addMethod('POST', new LambdaIntegration(this.yajiFrameUrlFn))
   }
 }

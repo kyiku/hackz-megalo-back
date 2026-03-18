@@ -46,6 +46,7 @@ export class Storage extends Construct {
         { prefix: 'collages/', expiration: Duration.days(30) },
         { prefix: 'print-ready/', expiration: Duration.days(7) },
         { prefix: 'downloads/', expiration: Duration.days(30) },
+        { prefix: 'yaji-frames/', expiration: Duration.days(1) },
       ],
       removalPolicy: RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
