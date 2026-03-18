@@ -127,6 +127,10 @@ export class AppStack extends cdk.Stack {
     storage.sessionsTable.grantReadData(api.sessionGetFn)
     storage.bucket.grantRead(api.sessionGetFn)
 
+    // download-by-code: DynamoDB Query(downloadCode-index), S3 GetObject (presigned URL)
+    storage.sessionsTable.grantReadData(api.downloadByCodeFn)
+    storage.bucket.grantRead(api.downloadByCodeFn)
+
     // process-start: Step Functions StartExecution, DynamoDB Query + UpdateItem
     pipeline.stateMachine.grantStartExecution(api.processStartFn)
     storage.sessionsTable.grantReadWriteData(api.processStartFn)
