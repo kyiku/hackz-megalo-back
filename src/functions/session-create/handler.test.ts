@@ -1,13 +1,15 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import type { APIGatewayProxyEvent, APIGatewayProxyResult, Context } from 'aws-lambda'
 
-const { mockPutSession, mockGeneratePresignedUploadUrl } = vi.hoisted(() => ({
+const { mockPutSession, mockGetSessionByDownloadCode, mockGeneratePresignedUploadUrl } = vi.hoisted(() => ({
   mockPutSession: vi.fn(),
+  mockGetSessionByDownloadCode: vi.fn(),
   mockGeneratePresignedUploadUrl: vi.fn(),
 }))
 
 vi.mock('../../lib/dynamodb', () => ({
   putSession: (...args: unknown[]) => mockPutSession(...args) as unknown,
+  getSessionByDownloadCode: (...args: unknown[]) => mockGetSessionByDownloadCode(...args) as unknown,
 }))
 
 vi.mock('../../lib/s3', () => ({
@@ -51,6 +53,7 @@ describe('session-create handler', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     process.env.WEBSOCKET_URL = 'wss://test.execute-api.ap-northeast-1.amazonaws.com/dev'
+    mockGetSessionByDownloadCode.mockResolvedValue(undefined)
   })
 
   it('should create a session and return upload URLs', async () => {
@@ -70,6 +73,7 @@ describe('session-create handler', () => {
 
     const body = JSON.parse(response.body) as {
       sessionId: string
+      downloadCode: string
       uploadUrls: { index: number; url: string }[]
       websocketUrl: string
     }
@@ -84,19 +88,63 @@ describe('session-create handler', () => {
     )
   })
 
+  it('should include a 5-digit downloadCode in the response', async () => {
+    mockPutSession.mockResolvedValueOnce(undefined)
+    mockGeneratePresignedUploadUrl.mockResolvedValue('https://presigned/url')
+
+    const event = createEvent({ filterType: 'simple', filter: 'beauty', photoCount: 1 })
+    const response = await invoke(event)
+
+    const body = JSON.parse(response.body) as { downloadCode: string }
+    expect(body.downloadCode).toMatch(/^\d{5}$/)
+  })
+
+  it('should save downloadCode to DynamoDB session', async () => {
+    mockPutSession.mockResolvedValueOnce(undefined)
+    mockGeneratePresignedUploadUrl.mockResolvedValue('https://presigned/url')
+
+    const event = createEvent({ filterType: 'simple', filter: 'beauty', photoCount: 1 })
+    await invoke(event)
+
+    expect(mockPutSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        downloadCode: expect.stringMatching(/^\d{5}$/) as string,
+      }),
+    )
+  })
+
+  it('should retry downloadCode generation on collision', async () => {
+    mockGetSessionByDownloadCode
+      .mockResolvedValueOnce({ sessionId: 'other-session' })
+      .mockResolvedValueOnce(undefined)
+    mockPutSession.mockResolvedValueOnce(undefined)
+    mockGeneratePresignedUploadUrl.mockResolvedValue('https://presigned/url')
+
+    const event = createEvent({ filterType: 'simple', filter: 'beauty', photoCount: 1 })
+    const response = await invoke(event)
+
+    expect(response.statusCode).toBe(201)
+    expect(mockGetSessionByDownloadCode).toHaveBeenCalledTimes(2)
+  })
+
+  it('should return 503 when all code generation retries are exhausted', async () => {
+    mockGetSessionByDownloadCode.mockResolvedValue({ sessionId: 'existing' })
+    mockGeneratePresignedUploadUrl.mockResolvedValue('https://presigned/url')
+
+    const event = createEvent({ filterType: 'simple', filter: 'beauty', photoCount: 1 })
+    const response = await invoke(event)
+
+    expect(response.statusCode).toBe(503)
+  })
+
   it('should use default photoCount of 4', async () => {
     mockPutSession.mockResolvedValueOnce(undefined)
     mockGeneratePresignedUploadUrl.mockResolvedValue('https://presigned/url')
 
-    const event = createEvent({
-      filterType: 'simple',
-      filter: 'natural',
-    })
+    const event = createEvent({ filterType: 'simple', filter: 'natural' })
 
     const response = await invoke(event)
-    const body = JSON.parse(response.body) as {
-      uploadUrls: { index: number; url: string }[]
-    }
+    const body = JSON.parse(response.body) as { uploadUrls: { index: number; url: string }[] }
     expect(body.uploadUrls).toHaveLength(4)
   })
 
@@ -104,12 +152,7 @@ describe('session-create handler', () => {
     mockPutSession.mockResolvedValueOnce(undefined)
     mockGeneratePresignedUploadUrl.mockResolvedValue('https://presigned/url')
 
-    const event = createEvent({
-      filterType: 'ai',
-      filter: 'anime',
-      photoCount: 2,
-    })
-
+    const event = createEvent({ filterType: 'ai', filter: 'anime', photoCount: 2 })
     await invoke(event)
 
     expect(mockPutSession).toHaveBeenCalledOnce()
@@ -125,28 +168,21 @@ describe('session-create handler', () => {
   })
 
   it('should return 400 for invalid body', async () => {
-    const event = createEvent({
-      filterType: 'invalid',
-      filter: 'beauty',
-    })
-
+    const event = createEvent({ filterType: 'invalid', filter: 'beauty' })
     const response = await invoke(event)
     expect(response.statusCode).toBe(400)
   })
 
   it('should return 400 for missing body', async () => {
     const event = { ...createEvent({}), body: null } as APIGatewayProxyEvent
-
     const response = await invoke(event)
     expect(response.statusCode).toBe(400)
   })
 
   it('should return 400 for malformed JSON body', async () => {
     const event = { ...createEvent({}), body: '{invalid json' } as APIGatewayProxyEvent
-
     const response = await invoke(event)
     expect(response.statusCode).toBe(400)
-
     const body = JSON.parse(response.body) as { error: string }
     expect(body.error).toBe('Invalid JSON in request body')
   })
@@ -155,12 +191,7 @@ describe('session-create handler', () => {
     mockPutSession.mockRejectedValueOnce(new Error('DynamoDB error'))
     mockGeneratePresignedUploadUrl.mockResolvedValue('https://presigned/url')
 
-    const event = createEvent({
-      filterType: 'simple',
-      filter: 'mono',
-      photoCount: 1,
-    })
-
+    const event = createEvent({ filterType: 'simple', filter: 'mono', photoCount: 1 })
     const response = await invoke(event)
     expect(response.statusCode).toBe(500)
     expect(JSON.parse(response.body)).toHaveProperty('error')
@@ -171,11 +202,7 @@ describe('session-create handler', () => {
     mockPutSession.mockResolvedValueOnce(undefined)
     mockGeneratePresignedUploadUrl.mockResolvedValue('https://presigned/url')
 
-    const event = createEvent({
-      filterType: 'simple',
-      filter: 'beauty',
-    })
-
+    const event = createEvent({ filterType: 'simple', filter: 'beauty' })
     const response = await invoke(event)
     expect(response.statusCode).toBe(500)
   })
